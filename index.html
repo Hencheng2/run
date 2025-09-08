@@ -6,16 +6,8 @@
     <title>CodeRunner - Multi-Language Code Editor</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Monaco Editor -->
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs/loader.js"></script>
-    <!-- JSZip for project export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- FileSaver for download functionality -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <!-- Pyodide for Python execution -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
-    <!-- Babel standalone for JSX support -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -23,9 +15,21 @@
             color: #ffffff;
             overflow: hidden;
         }
-        .monaco-editor {
+        .code-editor {
             width: 100%;
             height: 100%;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            border: none;
+            padding: 16px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: none;
+            tab-size: 4;
+            -moz-tab-size: 4;
+            white-space: pre;
+            overflow: auto;
         }
         .file-explorer {
             transition: all 0.3s ease;
@@ -58,6 +62,13 @@
             background: white;
             color: black;
         }
+        .syntax-python { color: #e6db74; }
+        .syntax-js { color: #a6e22e; }
+        .syntax-comment { color: #75715e; }
+        .syntax-keyword { color: #f92672; }
+        .syntax-string { color: #e6db74; }
+        .syntax-function { color: #66d9ef; }
+        .syntax-number { color: #ae81ff; }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -71,8 +82,6 @@
                     <option value="javascript">JavaScript</option>
                     <option value="cpp">C++</option>
                     <option value="java">Java</option>
-                    <option value="ruby">Ruby</option>
-                    <option value="go">Go</option>
                     <option value="html">HTML</option>
                 </select>
             </div>
@@ -85,8 +94,8 @@
             </button>
             <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
             <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
-            <input type="file" id="upload-btn" class="hidden" multiple directory webkitdirectory>
-            <label for="upload-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload</label>
+            <input type="file" id="upload-file" class="hidden">
+            <label for="upload-file" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload File</label>
         </div>
     </header>
 
@@ -111,8 +120,16 @@
         </div>
 
         <!-- Code Editor -->
-        <div class="flex-1 relative">
-            <div id="editor" class="monaco-editor"></div>
+        <div class="flex-1 relative flex flex-col">
+            <div class="bg-gray-800 p-2 text-sm flex justify-between">
+                <span id="current-file">main.py</span>
+                <div>
+                    <button id="new-file" class="text-blue-400 hover:text-blue-300 mr-2">+ New File</button>
+                    <button id="format-code" class="text-blue-400 hover:text-blue-300">Format</button>
+                </div>
+            </div>
+            <textarea id="editor" class="code-editor" spellcheck="false"># Write your Python code here
+print("Hello, World!")</textarea>
         </div>
 
         <!-- Output Panel -->
@@ -120,7 +137,7 @@
             <h2 class="font-semibold mb-4">Output</h2>
             <div id="output-tabs" class="flex border-b border-gray-700 mb-2">
                 <button class="tab-btn px-4 py-2 border-b-2 border-blue-500 text-blue-300" data-tab="output">Console</button>
-                <button class="tab-btn px-4 py-2" data-tab="html-output">HTML Output</button>
+                <button class="tab-btn px-4 py-2 text-gray-400" data-tab="html-output">HTML Output</button>
             </div>
             <div id="output-content" class="whitespace-pre-wrap flex-1 overflow-auto"></div>
             <div id="html-output-content" class="hidden flex-1 overflow-auto">
@@ -142,9 +159,6 @@
             <select id="dependency-type" class="bg-gray-700 text-white p-2 rounded w-full mb-4">
                 <option value="requirements.txt">Python - requirements.txt</option>
                 <option value="package.json">JavaScript - package.json</option>
-                <option value="pom.xml">Java - pom.xml</option>
-                <option value="gemfile">Ruby - Gemfile</option>
-                <option value="go.mod">Go - go.mod</option>
             </select>
             <button id="create-dependency" class="bg-blue-600 text-white px-4 py-2 rounded w-full btn-hover">Create</button>
             <button id="cancel-dependency" class="bg-gray-700 text-white px-4 py-2 rounded w-full mt-2 btn-hover">Cancel</button>
@@ -195,12 +209,13 @@
             // DOM elements
             const languageSelect = document.getElementById('language-select');
             const projectNameInput = document.getElementById('project-name');
+            const editor = document.getElementById('editor');
             const runButton = document.getElementById('run-btn');
             const runText = document.getElementById('run-text');
             const runSpinner = document.getElementById('run-spinner');
             const saveButton = document.getElementById('save-btn');
             const downloadButton = document.getElementById('download-btn');
-            const uploadButton = document.getElementById('upload-btn');
+            const uploadFileButton = document.getElementById('upload-file');
             const fileExplorer = document.getElementById('file-explorer');
             const toggleExplorer = document.getElementById('toggle-explorer');
             const fileTree = document.getElementById('file-tree');
@@ -215,42 +230,24 @@
             const createDependency = document.getElementById('create-dependency');
             const cancelDependency = document.getElementById('cancel-dependency');
             const tabButtons = document.querySelectorAll('.tab-btn');
-
-            // Initialize Monaco Editor
-            let editor;
-            require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.43.0/min/vs' }});
-            require(['vs/editor/editor.main'], function() {
-                editor = monaco.editor.create(document.getElementById('editor'), {
-                    value: state.files[state.currentFile].content,
-                    language: state.currentLanguage,
-                    theme: 'vs-dark',
-                    automaticLayout: true,
-                    fontSize: 14,
-                    lineNumbers: 'on',
-                    roundedSelection: true,
-                    scrollBeyondLastLine: false,
-                    readOnly: false,
-                    cursorStyle: 'line',
-                    minimap: { enabled: false }
-                });
-
-                // Listen for editor changes
-                editor.onDidChangeModelContent(function() {
-                    state.files[state.currentFile].content = editor.getValue();
-                });
-            });
+            const currentFileElement = document.getElementById('current-file');
+            const newFileButton = document.getElementById('new-file');
+            const formatCodeButton = document.getElementById('format-code');
 
             // Set up event listeners
             languageSelect.addEventListener('change', handleLanguageChange);
             projectNameInput.addEventListener('change', handleProjectNameChange);
+            editor.addEventListener('input', handleEditorChange);
             runButton.addEventListener('click', runCode);
             saveButton.addEventListener('click', saveProject);
             downloadButton.addEventListener('click', downloadProject);
-            uploadButton.addEventListener('change', handleFileUpload);
+            uploadFileButton.addEventListener('change', handleFileUpload);
             toggleExplorer.addEventListener('click', toggleFileExplorer);
             addDependencyButton.addEventListener('click', showDependencyModal);
             createDependency.addEventListener('click', createDependencyFile);
             cancelDependency.addEventListener('click', hideDependencyModal);
+            newFileButton.addEventListener('click', addNewFile);
+            formatCodeButton.addEventListener('click', formatCode);
             
             // Tab switching
             tabButtons.forEach(button => {
@@ -276,6 +273,7 @@
             // Initialize file tree
             updateFileTree();
             updateDependencyFiles();
+            applySyntaxHighlighting();
 
             // Event handlers
             function handleLanguageChange() {
@@ -300,6 +298,11 @@
                 state.projectName = projectNameInput.value || 'Untitled Project';
             }
 
+            function handleEditorChange() {
+                state.files[state.currentFile].content = editor.value;
+                applySyntaxHighlighting();
+            }
+
             function toggleFileExplorer() {
                 fileExplorer.classList.toggle('w-64');
                 fileExplorer.classList.toggle('w-0');
@@ -308,7 +311,7 @@
                 fileExplorer.classList.toggle('overflow-hidden');
                 
                 const toggleIcon = toggleExplorer.textContent;
-                toggleExplorter.textContent = toggleIcon === '→' ? '←' : '→';
+                toggleExplorer.textContent = toggleIcon === '→' ? '←' : '→';
             }
 
             function showDependencyModal() {
@@ -341,36 +344,6 @@
   "dependencies": {}
 }`;
                         break;
-                    case 'pom.xml':
-                        fileName = 'pom.xml';
-                        defaultContent = `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>com.example</groupId>
-    <artifactId>${state.projectName.toLowerCase().replace(/\s+/g, '-')}</artifactId>
-    <version>1.0-SNAPSHOT</version>
-
-    <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-    </properties>
-
-    <dependencies>
-        <!-- Add dependencies here -->
-    </dependencies>
-</project>`;
-                        break;
-                    case 'gemfile':
-                        fileName = 'Gemfile';
-                        defaultContent = '# Add your Ruby dependencies here\n# gem "rails"';
-                        break;
-                    case 'go.mod':
-                        fileName = 'go.mod';
-                        defaultContent = `module ${state.projectName.toLowerCase().replace(/\s+/g, '/')}\n\ngo 1.17\n\n// Add dependencies here`;
-                        break;
                 }
                 
                 state.files[fileName] = {
@@ -381,6 +354,7 @@
                 
                 updateDependencyFiles();
                 hideDependencyModal();
+                switchFile(fileName);
             }
 
             function switchFile(fileName) {
@@ -388,19 +362,17 @@
                 const file = state.files[fileName];
                 
                 // Update editor
-                if (editor) {
-                    const model = editor.getModel();
-                    if (model) {
-                        model.dispose();
-                    }
-                    
-                    const newModel = monaco.editor.createModel(
-                        file.content,
-                        file.language
-                    );
-                    
-                    editor.setModel(newModel);
+                editor.value = file.content;
+                currentFileElement.textContent = fileName;
+                
+                // Update language selection if needed
+                if (file.language !== state.currentLanguage) {
+                    state.currentLanguage = file.language;
+                    languageSelect.value = file.language;
                 }
+                
+                // Apply syntax highlighting
+                applySyntaxHighlighting();
                 
                 // Update UI
                 updateFileTree();
@@ -415,7 +387,7 @@
                         fileElement.className = `flex justify-between items-center p-1 hover:bg-gray-800 rounded cursor-pointer ${fileName === state.currentFile ? 'bg-gray-700' : ''}`;
                         fileElement.innerHTML = `
                             <span class="truncate">${fileName}</span>
-                            ${fileName !== 'main.py' && fileName !== 'main.js' && fileName !== 'main.cpp' && fileName !== 'Main.java' && fileName !== 'main.rb' && fileName !== 'main.go' && fileName !== 'index.html' ? 
+                            ${fileName !== 'main.py' && fileName !== 'main.js' && fileName !== 'main.cpp' && fileName !== 'Main.java' && fileName !== 'index.html' ? 
                             `<button class="text-red-500 hover:text-red-400 delete-file" data-file="${fileName}">×</button>` : ''}
                         `;
                         
@@ -432,13 +404,6 @@
                         fileTree.appendChild(fileElement);
                     }
                 });
-                
-                // Add "Add file" button
-                const addFileButton = document.createElement('button');
-                addFileButton.className = 'text-blue-400 hover:text-blue-300 text-sm mt-2';
-                addFileButton.textContent = '+ Add File';
-                addFileButton.addEventListener('click', addNewFile);
-                fileTree.appendChild(addFileButton);
             }
 
             function updateDependencyFiles() {
@@ -470,8 +435,7 @@
 
             function isDependencyFile(fileName) {
                 const dependencyFiles = [
-                    'requirements.txt', 'package.json', 'pom.xml', 
-                    'Gemfile', 'go.mod'
+                    'requirements.txt', 'package.json'
                 ];
                 return dependencyFiles.includes(fileName);
             }
@@ -488,12 +452,9 @@
                         case 'js': language = 'javascript'; break;
                         case 'cpp': case 'h': language = 'cpp'; break;
                         case 'java': language = 'java'; break;
-                        case 'rb': language = 'ruby'; break;
-                        case 'go': language = 'go'; break;
                         case 'html': language = 'html'; break;
                         case 'css': language = 'css'; break;
                         case 'json': language = 'json'; break;
-                        case 'xml': language = 'xml'; break;
                     }
                     
                     state.files[fileName] = {
@@ -555,6 +516,9 @@
                     
                     reader.readAsText(file);
                 }
+                
+                // Reset the file input
+                event.target.value = '';
             }
 
             async function runCode() {
@@ -564,7 +528,7 @@
                 outputContent.textContent = '';
                 
                 try {
-                    const code = editor.getValue();
+                    const code = editor.value;
                     const language = state.currentLanguage;
                     
                     // Clear HTML output if it exists
@@ -582,16 +546,10 @@
                             runHTMLCode(code);
                             break;
                         case 'cpp':
-                            outputContent.textContent = 'C++ execution requires Emscripten setup. This would compile to WebAssembly in a full implementation.';
+                            outputContent.textContent = 'C++ execution would require Emscripten setup. This would compile to WebAssembly in a full implementation.';
                             break;
                         case 'java':
-                            outputContent.textContent = 'Java execution requires CheerpJ or similar WebAssembly compiler. This would run Java in browser in a full implementation.';
-                            break;
-                        case 'ruby':
-                            outputContent.textContent = 'Ruby execution requires Opal or similar compiler. This would run Ruby in browser in a full implementation.';
-                            break;
-                        case 'go':
-                            outputContent.textContent = 'Go execution requires GopherJS or WebAssembly target. This would run Go in browser in a full implementation.';
+                            outputContent.textContent = 'Java execution would require CheerpJ or similar WebAssembly compiler. This would run Java in browser in a full implementation.';
                             break;
                         default:
                             outputContent.textContent = `Unsupported language: ${language}`;
@@ -668,13 +626,11 @@
                         outputContent.textContent += 'Note: Imports detected. In a full implementation, this would load modules from a CDN.\n\n';
                     }
                     
-                    // Use Babel to transpile modern JS if needed
+                    // Try direct execution
                     try {
-                        const transpiledCode = Babel.transform(code, { presets: ['env'] }).code;
-                        eval(transpiledCode);
-                    } catch (e) {
-                        // If Babel fails, try direct execution
                         eval(code);
+                    } catch (e) {
+                        outputContent.textContent += `JavaScript error: ${e.message}`;
                     }
                     
                     // Restore console.log
@@ -711,6 +667,92 @@
                 }
             }
 
+            function formatCode() {
+                const code = editor.value;
+                const language = state.currentLanguage;
+                
+                try {
+                    switch(language) {
+                        case 'python':
+                            // Simple Python formatting - just fix indentation
+                            const lines = code.split('\n');
+                            let indentLevel = 0;
+                            let formatted = '';
+                            
+                            for (const line of lines) {
+                                const trimmed = line.trim();
+                                if (trimmed.length === 0) {
+                                    formatted += '\n';
+                                    continue;
+                                }
+                                
+                                // Decrease indent after dedent keywords
+                                if (trimmed.startsWith('return') || trimmed.startsWith('break') || 
+                                    trimmed.startsWith('continue') || trimmed.startsWith('pass') ||
+                                    trimmed.startsWith('elif ') || trimmed.startsWith('else:') || 
+                                    trimmed.startsWith('except') || trimmed.startsWith('finally:')) {
+                                    indentLevel = Math.max(0, indentLevel - 1);
+                                }
+                                
+                                // Add current indent
+                                formatted += '    '.repeat(indentLevel) + trimmed + '\n';
+                                
+                                // Increase indent after colon
+                                if (trimmed.endsWith(':') && !trimmed.startsWith('#')) {
+                                    indentLevel++;
+                                }
+                                
+                                // Decrease indent after certain keywords
+                                if (trimmed.startsWith('return') || trimmed.startsWith('break') || 
+                                    trimmed.startsWith('continue') || trimmed.startsWith('pass')) {
+                                    indentLevel = Math.max(0, indentLevel - 1);
+                                }
+                            }
+                            
+                            editor.value = formatted;
+                            state.files[state.currentFile].content = formatted;
+                            break;
+                            
+                        case 'javascript':
+                            // Simple JS formatting
+                            let jsFormatted = code;
+                            // Add spaces around operators
+                            jsFormatted = jsFormatted.replace(/([=+\-*/%&|^<>!])=/g, '$1 = ');
+                            // Add space after commas
+                            jsFormatted = jsFormatted.replace(/,(\S)/g, ', $1');
+                            // Add newlines after braces and semicolons
+                            jsFormatted = jsFormatted.replace(/;/g, ';\n');
+                            jsFormatted = jsFormatted.replace(/{/g, '{\n');
+                            jsFormatted = jsFormatted.replace(/}/g, '\n}\n');
+                            
+                            editor.value = jsFormatted;
+                            state.files[state.currentFile].content = jsFormatted;
+                            break;
+                            
+                        default:
+                            outputContent.textContent = 'Formatting not supported for this language';
+                    }
+                    
+                    applySyntaxHighlighting();
+                } catch (error) {
+                    outputContent.textContent = `Formatting error: ${error.message}`;
+                }
+            }
+
+            function applySyntaxHighlighting() {
+                // This is a simplified syntax highlighting approach
+                const code = editor.value;
+                const language = state.currentLanguage;
+                
+                // Remove previous highlighting
+                editor.classList.remove('syntax-python', 'syntax-js', 'syntax-comment', 
+                                      'syntax-keyword', 'syntax-string', 'syntax-function', 
+                                      'syntax-number');
+                
+                // For a real implementation, you would want to use a proper syntax highlighter
+                // This is just a basic example for demonstration
+            }
+
             function saveProject() {
                 try {
                     localStorage.setItem('codeRunner_project', JSON.stringify(state));
@@ -725,22 +767,27 @@
             }
 
             function downloadProject() {
-                const zip = new JSZip();
-                
-                // Add all files to the zip
-                Object.keys(state.files).forEach(fileName => {
-                    zip.file(fileName, state.files[fileName].content);
-                });
-                
-                // Generate the zip file
-                zip.generateAsync({type: 'blob'}).then(function(content) {
-                    saveAs(content, `${state.projectName}.zip`);
+                try {
+                    const data = JSON.stringify(state, null, 2);
+                    const blob = new Blob([data], {type: 'application/json'});
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${state.projectName}.coderunner`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
                     statusElement.textContent = 'Project downloaded';
                     
                     setTimeout(() => {
                         statusElement.textContent = 'Idle';
                     }, 2000);
-                });
+                } catch (error) {
+                    statusElement.textContent = 'Error downloading project';
+                }
             }
 
             // Helper functions
@@ -750,8 +797,6 @@
                     case 'javascript': return 'js';
                     case 'cpp': return 'cpp';
                     case 'java': return 'java';
-                    case 'ruby': return 'rb';
-                    case 'go': return 'go';
                     case 'html': return 'html';
                     default: return 'txt';
                 }
@@ -767,10 +812,6 @@
                         return '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}';
                     case 'java':
                         return 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}';
-                    case 'ruby':
-                        return '# Write your Ruby code here\nputs "Hello, World!"';
-                    case 'go':
-                        return 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}';
                     case 'html':
                         return '<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>';
                     default:
@@ -785,12 +826,9 @@
                     case 'js': return 'javascript';
                     case 'cpp': case 'h': return 'cpp';
                     case 'java': return 'java';
-                    case 'rb': return 'ruby';
-                    case 'go': return 'go';
                     case 'html': return 'html';
                     case 'css': return 'css';
                     case 'json': return 'json';
-                    case 'xml': return 'xml';
                     default: return 'plaintext';
                 }
             }
