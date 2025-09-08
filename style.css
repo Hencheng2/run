@@ -1,0 +1,62 @@
+body {
+    background-color: #1e1e1e;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.monaco-editor-container {
+    height: 100%;
+    width: 100%;
+}
+
+.file-explorer {
+    transition: width 0.3s ease;
+    background-color: #2d2d2d;
+    overflow-y: auto;
+}
+
+.output-panel {
+    transition: all 0.3s ease;
+    background-color: #252526;
+    overflow-y: auto;
+}
+
+button, select, input[type="text"] {
+    transition: background-color 0.2s ease;
+}
+
+button:hover, select:hover {
+    background-color: #005f99;
+}
+
+input[type="text"]:hover {
+    background-color: #3c3c3c;
+}
+
+header, footer {
+    background-color: #2d2d2d;
+}
+
+main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .file-explorer {
+        width: 100% !important;
+        position: absolute;
+        z-index: 10;
+    }
+    .monaco-editor-container {
+        width: 100%;
+    }
+    .output-panel {
+        width: 100%;
+        max-height: 30%;
+    }
+}
