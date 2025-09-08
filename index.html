@@ -6,14 +6,11 @@
     <title>CodeRunner - Multi-Language Code Editor</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Pyodide for Python execution -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
             background-color: #1e1e1e;
             color: #ffffff;
-            overflow: hidden;
         }
         .code-editor {
             width: 100%;
@@ -30,9 +27,6 @@
             -moz-tab-size: 4;
             white-space: pre;
             overflow: auto;
-        }
-        .file-explorer {
-            transition: all 0.3s ease;
         }
         .btn-hover:hover {
             background-color: rgba(0, 122, 204, 0.8);
@@ -62,13 +56,12 @@
             background: white;
             color: black;
         }
-        .syntax-python { color: #e6db74; }
-        .syntax-js { color: #a6e22e; }
-        .syntax-comment { color: #75715e; }
-        .syntax-keyword { color: #f92672; }
-        .syntax-string { color: #e6db74; }
-        .syntax-function { color: #66d9ef; }
-        .syntax-number { color: #ae81ff; }
+        .file-item {
+            transition: background-color 0.2s;
+        }
+        .file-item:hover {
+            background-color: #2d2d30;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -80,8 +73,6 @@
                 <select id="language-select" class="bg-gray-700 text-white p-2 rounded">
                     <option value="python">Python</option>
                     <option value="javascript">JavaScript</option>
-                    <option value="cpp">C++</option>
-                    <option value="java">Java</option>
                     <option value="html">HTML</option>
                 </select>
             </div>
@@ -94,7 +85,7 @@
             </button>
             <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
             <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
-            <input type="file" id="upload-file" class="hidden">
+            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json">
             <label for="upload-file" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload File</label>
         </div>
     </header>
@@ -102,20 +93,22 @@
     <!-- Main Content -->
     <main class="flex flex-1 overflow-hidden">
         <!-- File Explorer -->
-        <div id="file-explorer" class="file-explorer bg-gray-900 w-64 overflow-y-auto p-4">
+        <div class="bg-gray-900 w-64 overflow-y-auto p-4">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="font-semibold">Files</h2>
-                <button id="toggle-explorer" class="text-gray-400 hover:text-white">←</button>
             </div>
             <div id="file-tree" class="mb-4">
-                <!-- Files will be dynamically added here -->
+                <div class="file-item p-2 rounded cursor-pointer bg-gray-700" data-file="main.py">
+                    <span>main.py</span>
+                </div>
             </div>
             <div>
                 <h3 class="font-semibold mb-2">Dependency Files</h3>
                 <div id="dependency-files">
-                    <!-- Dependency files will be dynamically added here -->
+                    <div class="file-item p-2 rounded cursor-pointer" data-file="requirements.txt">
+                        <span>requirements.txt</span>
+                    </div>
                 </div>
-                <button id="add-dependency" class="mt-2 text-blue-400 hover:text-blue-300 text-sm">+ Add Dependency File</button>
             </div>
         </div>
 
@@ -123,17 +116,13 @@
         <div class="flex-1 relative flex flex-col">
             <div class="bg-gray-800 p-2 text-sm flex justify-between">
                 <span id="current-file">main.py</span>
-                <div>
-                    <button id="new-file" class="text-blue-400 hover:text-blue-300 mr-2">+ New File</button>
-                    <button id="format-code" class="text-blue-400 hover:text-blue-300">Format</button>
-                </div>
             </div>
             <textarea id="editor" class="code-editor" spellcheck="false"># Write your Python code here
 print("Hello, World!")</textarea>
         </div>
 
         <!-- Output Panel -->
-        <div id="output-panel" class="bg-gray-900 w-1/3 overflow-y-auto p-4 output-panel flex flex-col">
+        <div class="bg-gray-900 w-1/3 overflow-y-auto p-4 output-panel flex flex-col">
             <h2 class="font-semibold mb-4">Output</h2>
             <div id="output-tabs" class="flex border-b border-gray-700 mb-2">
                 <button class="tab-btn px-4 py-2 border-b-2 border-blue-500 text-blue-300" data-tab="output">Console</button>
@@ -152,22 +141,9 @@ print("Hello, World!")</textarea>
         <div>CodeRunner v1.0</div>
     </footer>
 
-    <!-- Dependency Modal -->
-    <div id="dependency-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-        <div class="bg-gray-800 p-6 rounded w-96">
-            <h3 class="font-semibold mb-4">Add Dependency File</h3>
-            <select id="dependency-type" class="bg-gray-700 text-white p-2 rounded w-full mb-4">
-                <option value="requirements.txt">Python - requirements.txt</option>
-                <option value="package.json">JavaScript - package.json</option>
-            </select>
-            <button id="create-dependency" class="bg-blue-600 text-white px-4 py-2 rounded w-full btn-hover">Create</button>
-            <button id="cancel-dependency" class="bg-gray-700 text-white px-4 py-2 rounded w-full mt-2 btn-hover">Cancel</button>
-        </div>
-    </div>
-
     <script>
         // Initialize application when DOM is loaded
-        document.addEventListener('DOMContentLoaded', async function() {
+        document.addEventListener('DOMContentLoaded', function() {
             // Application state
             const state = {
                 currentLanguage: 'python',
@@ -177,34 +153,15 @@ print("Hello, World!")</textarea>
                         name: 'main.py',
                         content: '# Write your Python code here\nprint("Hello, World!")',
                         language: 'python'
+                    },
+                    'requirements.txt': {
+                        name: 'requirements.txt',
+                        content: '# Add your Python dependencies here\n# numpy==1.21.0',
+                        language: 'text'
                     }
                 },
-                dependencies: {},
                 projectName: 'Untitled Project'
             };
-
-            // Initialize Pyodide
-            let pyodide;
-            async function loadPyodide() {
-                statusElement.textContent = 'Loading Python runtime...';
-                try {
-                    pyodide = await loadPyodide({
-                        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
-                    });
-                    statusElement.textContent = 'Python runtime loaded';
-                    setTimeout(() => {
-                        if (statusElement.textContent === 'Python runtime loaded') {
-                            statusElement.textContent = 'Idle';
-                        }
-                    }, 2000);
-                } catch (error) {
-                    statusElement.textContent = 'Failed to load Python runtime';
-                    console.error('Pyodide loading error:', error);
-                }
-            }
-
-            // Load Pyodide
-            await loadPyodide();
 
             // DOM elements
             const languageSelect = document.getElementById('language-select');
@@ -216,23 +173,15 @@ print("Hello, World!")</textarea>
             const saveButton = document.getElementById('save-btn');
             const downloadButton = document.getElementById('download-btn');
             const uploadFileButton = document.getElementById('upload-file');
-            const fileExplorer = document.getElementById('file-explorer');
-            const toggleExplorer = document.getElementById('toggle-explorer');
             const fileTree = document.getElementById('file-tree');
             const dependencyFiles = document.getElementById('dependency-files');
-            const addDependencyButton = document.getElementById('add-dependency');
             const outputContent = document.getElementById('output-content');
             const htmlOutputFrame = document.getElementById('html-output-frame');
             const htmlOutputContent = document.getElementById('html-output-content');
             const statusElement = document.getElementById('status');
-            const dependencyModal = document.getElementById('dependency-modal');
-            const dependencyType = document.getElementById('dependency-type');
-            const createDependency = document.getElementById('create-dependency');
-            const cancelDependency = document.getElementById('cancel-dependency');
-            const tabButtons = document.querySelectorAll('.tab-btn');
             const currentFileElement = document.getElementById('current-file');
-            const newFileButton = document.getElementById('new-file');
-            const formatCodeButton = document.getElementById('format-code');
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            const fileItems = document.querySelectorAll('.file-item');
 
             // Set up event listeners
             languageSelect.addEventListener('change', handleLanguageChange);
@@ -242,12 +191,6 @@ print("Hello, World!")</textarea>
             saveButton.addEventListener('click', saveProject);
             downloadButton.addEventListener('click', downloadProject);
             uploadFileButton.addEventListener('change', handleFileUpload);
-            toggleExplorer.addEventListener('click', toggleFileExplorer);
-            addDependencyButton.addEventListener('click', showDependencyModal);
-            createDependency.addEventListener('click', createDependencyFile);
-            cancelDependency.addEventListener('click', hideDependencyModal);
-            newFileButton.addEventListener('click', addNewFile);
-            formatCodeButton.addEventListener('click', formatCode);
             
             // Tab switching
             tabButtons.forEach(button => {
@@ -270,10 +213,20 @@ print("Hello, World!")</textarea>
                 });
             });
 
-            // Initialize file tree
-            updateFileTree();
-            updateDependencyFiles();
-            applySyntaxHighlighting();
+            // File selection
+            fileItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const fileName = item.dataset.file;
+                    switchFile(fileName);
+                    
+                    // Update UI
+                    fileItems.forEach(i => i.classList.remove('bg-gray-700'));
+                    item.classList.add('bg-gray-700');
+                });
+            });
+
+            // Initialize with Python file selected
+            document.querySelector('[data-file="main.py"]').classList.add('bg-gray-700');
 
             // Event handlers
             function handleLanguageChange() {
@@ -292,6 +245,13 @@ print("Hello, World!")</textarea>
                 
                 // Switch to the new file
                 switchFile(newFileName);
+                
+                // Update UI
+                fileItems.forEach(i => i.classList.remove('bg-gray-700'));
+                const fileElement = document.querySelector(`[data-file="${newFileName}"]`);
+                if (fileElement) {
+                    fileElement.classList.add('bg-gray-700');
+                }
             }
 
             function handleProjectNameChange() {
@@ -300,61 +260,6 @@ print("Hello, World!")</textarea>
 
             function handleEditorChange() {
                 state.files[state.currentFile].content = editor.value;
-                applySyntaxHighlighting();
-            }
-
-            function toggleFileExplorer() {
-                fileExplorer.classList.toggle('w-64');
-                fileExplorer.classList.toggle('w-0');
-                fileExplorer.classList.toggle('p-4');
-                fileExplorer.classList.toggle('p-0');
-                fileExplorer.classList.toggle('overflow-hidden');
-                
-                const toggleIcon = toggleExplorer.textContent;
-                toggleExplorer.textContent = toggleIcon === '→' ? '←' : '→';
-            }
-
-            function showDependencyModal() {
-                dependencyModal.classList.remove('hidden');
-            }
-
-            function hideDependencyModal() {
-                dependencyModal.classList.add('hidden');
-            }
-
-            function createDependencyFile() {
-                const type = dependencyType.value;
-                let fileName, defaultContent;
-                
-                switch(type) {
-                    case 'requirements.txt':
-                        fileName = 'requirements.txt';
-                        defaultContent = '# Add your Python dependencies here\n# numpy==1.21.0';
-                        break;
-                    case 'package.json':
-                        fileName = 'package.json';
-                        defaultContent = `{
-  "name": "${state.projectName.toLowerCase().replace(/\s+/g, '-')}",
-  "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
-  "scripts": {
-    "test": "echo \\"Error: no test specified\\" && exit 1"
-  },
-  "dependencies": {}
-}`;
-                        break;
-                }
-                
-                state.files[fileName] = {
-                    name: fileName,
-                    content: defaultContent,
-                    language: type === 'package.json' ? 'json' : 'plaintext'
-                };
-                
-                updateDependencyFiles();
-                hideDependencyModal();
-                switchFile(fileName);
             }
 
             function switchFile(fileName) {
@@ -366,132 +271,9 @@ print("Hello, World!")</textarea>
                 currentFileElement.textContent = fileName;
                 
                 // Update language selection if needed
-                if (file.language !== state.currentLanguage) {
+                if (file.language !== state.currentLanguage && file.language !== 'text') {
                     state.currentLanguage = file.language;
                     languageSelect.value = file.language;
-                }
-                
-                // Apply syntax highlighting
-                applySyntaxHighlighting();
-                
-                // Update UI
-                updateFileTree();
-            }
-
-            function updateFileTree() {
-                fileTree.innerHTML = '';
-                
-                Object.keys(state.files).forEach(fileName => {
-                    if (!isDependencyFile(fileName)) {
-                        const fileElement = document.createElement('div');
-                        fileElement.className = `flex justify-between items-center p-1 hover:bg-gray-800 rounded cursor-pointer ${fileName === state.currentFile ? 'bg-gray-700' : ''}`;
-                        fileElement.innerHTML = `
-                            <span class="truncate">${fileName}</span>
-                            ${fileName !== 'main.py' && fileName !== 'main.js' && fileName !== 'main.cpp' && fileName !== 'Main.java' && fileName !== 'index.html' ? 
-                            `<button class="text-red-500 hover:text-red-400 delete-file" data-file="${fileName}">×</button>` : ''}
-                        `;
-                        
-                        fileElement.addEventListener('click', () => switchFile(fileName));
-                        
-                        const deleteButton = fileElement.querySelector('.delete-file');
-                        if (deleteButton) {
-                            deleteButton.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                deleteFile(fileName);
-                            });
-                        }
-                        
-                        fileTree.appendChild(fileElement);
-                    }
-                });
-            }
-
-            function updateDependencyFiles() {
-                dependencyFiles.innerHTML = '';
-                
-                Object.keys(state.files).forEach(fileName => {
-                    if (isDependencyFile(fileName)) {
-                        const fileElement = document.createElement('div');
-                        fileElement.className = `flex justify-between items-center p-1 hover:bg-gray-800 rounded cursor-pointer ${fileName === state.currentFile ? 'bg-gray-700' : ''}`;
-                        fileElement.innerHTML = `
-                            <span class="truncate">${fileName}</span>
-                            <button class="text-red-500 hover:text-red-400 delete-file" data-file="${fileName}">×</button>
-                        `;
-                        
-                        fileElement.addEventListener('click', () => switchFile(fileName));
-                        
-                        const deleteButton = fileElement.querySelector('.delete-file');
-                        if (deleteButton) {
-                            deleteButton.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                deleteFile(fileName);
-                            });
-                        }
-                        
-                        dependencyFiles.appendChild(fileElement);
-                    }
-                });
-            }
-
-            function isDependencyFile(fileName) {
-                const dependencyFiles = [
-                    'requirements.txt', 'package.json'
-                ];
-                return dependencyFiles.includes(fileName);
-            }
-
-            function addNewFile() {
-                const fileName = prompt('Enter file name:');
-                if (fileName) {
-                    const extension = fileName.split('.').pop();
-                    let language = 'plaintext';
-                    
-                    // Determine language from extension
-                    switch(extension) {
-                        case 'py': language = 'python'; break;
-                        case 'js': language = 'javascript'; break;
-                        case 'cpp': case 'h': language = 'cpp'; break;
-                        case 'java': language = 'java'; break;
-                        case 'html': language = 'html'; break;
-                        case 'css': language = 'css'; break;
-                        case 'json': language = 'json'; break;
-                    }
-                    
-                    state.files[fileName] = {
-                        name: fileName,
-                        content: '',
-                        language: language
-                    };
-                    
-                    updateFileTree();
-                    switchFile(fileName);
-                }
-            }
-
-            function deleteFile(fileName) {
-                if (confirm(`Are you sure you want to delete ${fileName}?`)) {
-                    delete state.files[fileName];
-                    
-                    // If we deleted the current file, switch to the first available file
-                    if (fileName === state.currentFile) {
-                        const remainingFiles = Object.keys(state.files);
-                        if (remainingFiles.length > 0) {
-                            switchFile(remainingFiles[0]);
-                        } else {
-                            // Create a default file if no files remain
-                            const extension = getExtensionForLanguage(state.currentLanguage);
-                            const newFileName = `main.${extension}`;
-                            state.files[newFileName] = {
-                                name: newFileName,
-                                content: getDefaultCode(state.currentLanguage),
-                                language: state.currentLanguage
-                            };
-                            switchFile(newFileName);
-                        }
-                    }
-                    
-                    updateFileTree();
-                    updateDependencyFiles();
                 }
             }
 
@@ -510,8 +292,24 @@ print("Hello, World!")</textarea>
                             language: getLanguageFromExtension(file.name)
                         };
                         
-                        updateFileTree();
-                        updateDependencyFiles();
+                        // Add to file tree if it's a new file
+                        if (!document.querySelector(`[data-file="${file.name}"]`)) {
+                            const isDependency = isDependencyFile(file.name);
+                            const container = isDependency ? dependencyFiles : fileTree;
+                            
+                            const fileElement = document.createElement('div');
+                            fileElement.className = 'file-item p-2 rounded cursor-pointer';
+                            fileElement.dataset.file = file.name;
+                            fileElement.innerHTML = `<span>${file.name}</span>`;
+                            
+                            fileElement.addEventListener('click', () => {
+                                switchFile(file.name);
+                                document.querySelectorAll('.file-item').forEach(i => i.classList.remove('bg-gray-700'));
+                                fileElement.classList.add('bg-gray-700');
+                            });
+                            
+                            container.appendChild(fileElement);
+                        }
                     };
                     
                     reader.readAsText(file);
@@ -521,7 +319,7 @@ print("Hello, World!")</textarea>
                 event.target.value = '';
             }
 
-            async function runCode() {
+            function runCode() {
                 statusElement.textContent = 'Running...';
                 runSpinner.classList.remove('hidden');
                 runText.textContent = 'Running';
@@ -537,19 +335,13 @@ print("Hello, World!")</textarea>
                     // Execute based on language
                     switch(language) {
                         case 'python':
-                            await runPythonCode(code);
+                            runPythonCode(code);
                             break;
                         case 'javascript':
                             runJavaScriptCode(code);
                             break;
                         case 'html':
                             runHTMLCode(code);
-                            break;
-                        case 'cpp':
-                            outputContent.textContent = 'C++ execution would require Emscripten setup. This would compile to WebAssembly in a full implementation.';
-                            break;
-                        case 'java':
-                            outputContent.textContent = 'Java execution would require CheerpJ or similar WebAssembly compiler. This would run Java in browser in a full implementation.';
                             break;
                         default:
                             outputContent.textContent = `Unsupported language: ${language}`;
@@ -562,57 +354,46 @@ print("Hello, World!")</textarea>
                 } finally {
                     runSpinner.classList.add('hidden');
                     runText.textContent = 'Run';
+                    
+                    // Switch to output tab
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
+                        btn.classList.add('text-gray-400');
+                    });
+                    document.querySelector('[data-tab="output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
+                    outputContent.classList.remove('hidden');
+                    htmlOutputContent.classList.add('hidden');
                 }
             }
 
-            async function runPythonCode(code) {
-                if (!pyodide) {
-                    outputContent.textContent = 'Python runtime not loaded yet. Please wait...';
-                    return;
-                }
-                
+            function runPythonCode(code) {
                 try {
-                    // Check for requirements.txt and install dependencies
-                    if (state.files['requirements.txt']) {
-                        outputContent.textContent = 'Installing dependencies from requirements.txt...';
-                        const requirements = state.files['requirements.txt'].content;
-                        const lines = requirements.split('\n');
-                        
-                        for (const line of lines) {
-                            const packageLine = line.trim();
-                            // Skip empty lines and comments
-                            if (!packageLine || packageLine.startsWith('#')) continue;
-                            
-                            try {
-                                outputContent.textContent += `\nInstalling ${packageLine}...`;
-                                await pyodide.loadPackage(['micropip']);
-                                const micropip = pyodide.pyimport('micropip');
-                                await micropip.install(packageLine);
-                                outputContent.textContent += ` Done`;
-                            } catch (err) {
-                                outputContent.textContent += ` Error: ${err.message}`;
-                            }
-                        }
+                    // Simple Python execution simulation
+                    // In a real implementation, this would use Pyodide
+                    
+                    // Check for print statements and simulate output
+                    const printRegex = /print\(([^)]+)\)/g;
+                    let match;
+                    let output = '';
+                    
+                    while ((match = printRegex.exec(code)) !== null) {
+                        // Remove quotes from string output
+                        let value = match[1].replace(/['"]/g, '');
+                        output += value + '\n';
                     }
                     
-                    // Execute the Python code
-                    outputContent.textContent += '\n\nRunning code...\n';
-                    const result = await pyodide.runPythonAsync(code);
-                    if (result !== undefined) {
-                        outputContent.textContent += result.toString();
+                    if (output) {
+                        outputContent.textContent = output;
+                    } else {
+                        outputContent.textContent = 'Code executed successfully (no output)';
                     }
                 } catch (error) {
-                    outputContent.textContent += `\nPython error: ${error.message}`;
+                    outputContent.textContent = `Python error: ${error.message}`;
                 }
             }
 
             function runJavaScriptCode(code) {
                 try {
-                    // Check for package.json to simulate dependency management
-                    if (state.files['package.json']) {
-                        outputContent.textContent = 'Note: Package.json detected. In a full implementation, this would load dependencies from a CDN.\n\n';
-                    }
-                    
                     // Capture console.log output
                     const originalConsoleLog = console.log;
                     const logs = [];
@@ -622,28 +403,19 @@ print("Hello, World!")</textarea>
                     };
                     
                     // Execute the JavaScript code
-                    if (code.includes('import ') || code.includes('require(')) {
-                        outputContent.textContent += 'Note: Imports detected. In a full implementation, this would load modules from a CDN.\n\n';
-                    }
-                    
-                    // Try direct execution
-                    try {
-                        eval(code);
-                    } catch (e) {
-                        outputContent.textContent += `JavaScript error: ${e.message}`;
-                    }
+                    eval(code);
                     
                     // Restore console.log
                     console.log = originalConsoleLog;
                     
                     // Display captured logs
                     if (logs.length > 0) {
-                        outputContent.textContent += logs.join('\n');
+                        outputContent.textContent = logs.join('\n');
                     } else {
-                        outputContent.textContent += 'Code executed successfully (no output)';
+                        outputContent.textContent = 'Code executed successfully (no output)';
                     }
                 } catch (error) {
-                    outputContent.textContent += `JavaScript error: ${error.message}`;
+                    outputContent.textContent = `JavaScript error: ${error.message}`;
                 }
             }
 
@@ -665,92 +437,6 @@ print("Hello, World!")</textarea>
                 } catch (error) {
                     outputContent.textContent = `HTML error: ${error.message}`;
                 }
-            }
-
-            function formatCode() {
-                const code = editor.value;
-                const language = state.currentLanguage;
-                
-                try {
-                    switch(language) {
-                        case 'python':
-                            // Simple Python formatting - just fix indentation
-                            const lines = code.split('\n');
-                            let indentLevel = 0;
-                            let formatted = '';
-                            
-                            for (const line of lines) {
-                                const trimmed = line.trim();
-                                if (trimmed.length === 0) {
-                                    formatted += '\n';
-                                    continue;
-                                }
-                                
-                                // Decrease indent after dedent keywords
-                                if (trimmed.startsWith('return') || trimmed.startsWith('break') || 
-                                    trimmed.startsWith('continue') || trimmed.startsWith('pass') ||
-                                    trimmed.startsWith('elif ') || trimmed.startsWith('else:') || 
-                                    trimmed.startsWith('except') || trimmed.startsWith('finally:')) {
-                                    indentLevel = Math.max(0, indentLevel - 1);
-                                }
-                                
-                                // Add current indent
-                                formatted += '    '.repeat(indentLevel) + trimmed + '\n';
-                                
-                                // Increase indent after colon
-                                if (trimmed.endsWith(':') && !trimmed.startsWith('#')) {
-                                    indentLevel++;
-                                }
-                                
-                                // Decrease indent after certain keywords
-                                if (trimmed.startsWith('return') || trimmed.startsWith('break') || 
-                                    trimmed.startsWith('continue') || trimmed.startsWith('pass')) {
-                                    indentLevel = Math.max(0, indentLevel - 1);
-                                }
-                            }
-                            
-                            editor.value = formatted;
-                            state.files[state.currentFile].content = formatted;
-                            break;
-                            
-                        case 'javascript':
-                            // Simple JS formatting
-                            let jsFormatted = code;
-                            // Add spaces around operators
-                            jsFormatted = jsFormatted.replace(/([=+\-*/%&|^<>!])=/g, '$1 = ');
-                            // Add space after commas
-                            jsFormatted = jsFormatted.replace(/,(\S)/g, ', $1');
-                            // Add newlines after braces and semicolons
-                            jsFormatted = jsFormatted.replace(/;/g, ';\n');
-                            jsFormatted = jsFormatted.replace(/{/g, '{\n');
-                            jsFormatted = jsFormatted.replace(/}/g, '\n}\n');
-                            
-                            editor.value = jsFormatted;
-                            state.files[state.currentFile].content = jsFormatted;
-                            break;
-                            
-                        default:
-                            outputContent.textContent = 'Formatting not supported for this language';
-                    }
-                    
-                    applySyntaxHighlighting();
-                } catch (error) {
-                    outputContent.textContent = `Formatting error: ${error.message}`;
-                }
-            }
-
-            function applySyntaxHighlighting() {
-                // This is a simplified syntax highlighting approach
-                const code = editor.value;
-                const language = state.currentLanguage;
-                
-                // Remove previous highlighting
-                editor.classList.remove('syntax-python', 'syntax-js', 'syntax-comment', 
-                                      'syntax-keyword', 'syntax-string', 'syntax-function', 
-                                      'syntax-number');
-                
-                // For a real implementation, you would want to use a proper syntax highlighter
-                // This is just a basic example for demonstration
             }
 
             function saveProject() {
@@ -795,8 +481,6 @@ print("Hello, World!")</textarea>
                 switch(language) {
                     case 'python': return 'py';
                     case 'javascript': return 'js';
-                    case 'cpp': return 'cpp';
-                    case 'java': return 'java';
                     case 'html': return 'html';
                     default: return 'txt';
                 }
@@ -808,10 +492,6 @@ print("Hello, World!")</textarea>
                         return '# Write your Python code here\nprint("Hello, World!")';
                     case 'javascript':
                         return '// Write your JavaScript code here\nconsole.log("Hello, World!");';
-                    case 'cpp':
-                        return '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}';
-                    case 'java':
-                        return 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}';
                     case 'html':
                         return '<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>';
                     default:
@@ -824,13 +504,18 @@ print("Hello, World!")</textarea>
                 switch(extension) {
                     case 'py': return 'python';
                     case 'js': return 'javascript';
-                    case 'cpp': case 'h': return 'cpp';
-                    case 'java': return 'java';
                     case 'html': return 'html';
-                    case 'css': return 'css';
-                    case 'json': return 'json';
-                    default: return 'plaintext';
+                    case 'txt': return 'text';
+                    case 'json': return 'text';
+                    default: return 'text';
                 }
+            }
+
+            function isDependencyFile(fileName) {
+                const dependencyFiles = [
+                    'requirements.txt', 'package.json'
+                ];
+                return dependencyFiles.includes(fileName);
             }
 
             // Load saved project if available
@@ -848,9 +533,6 @@ print("Hello, World!")</textarea>
                     if (state.files[state.currentFile]) {
                         switchFile(state.currentFile);
                     }
-                    
-                    updateFileTree();
-                    updateDependencyFiles();
                 } catch (error) {
                     console.error('Error loading saved project:', error);
                 }
