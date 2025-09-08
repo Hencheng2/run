@@ -12,6 +12,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- FileSaver for download functionality -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <!-- Pyodide for Python execution -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+    <!-- Babel standalone for JSX support -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -33,6 +37,27 @@
             font-family: monospace;
             white-space: pre-wrap;
         }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007acc;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .html-output {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            color: black;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -48,12 +73,16 @@
                     <option value="java">Java</option>
                     <option value="ruby">Ruby</option>
                     <option value="go">Go</option>
+                    <option value="html">HTML</option>
                 </select>
             </div>
-            <input type="text" id="project-name" placeholder="Project Name" class="bg-gray-700 text-white p-2 rounded w-40">
+            <input type="text" id="project-name" placeholder="Project Name" class="bg-gray-700 text-white p-2 rounded w-40" value="Untitled Project">
         </div>
         <div class="flex space-x-2">
-            <button id="run-btn" class="bg-blue-600 text-white px-4 py-2 rounded btn-hover">Run</button>
+            <button id="run-btn" class="bg-blue-600 text-white px-4 py-2 rounded btn-hover flex items-center">
+                <span id="run-text">Run</span>
+                <span id="run-spinner" class="loading-spinner hidden"></span>
+            </button>
             <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
             <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
             <input type="file" id="upload-btn" class="hidden" multiple directory webkitdirectory>
@@ -87,9 +116,16 @@
         </div>
 
         <!-- Output Panel -->
-        <div id="output-panel" class="bg-gray-900 w-1/3 overflow-y-auto p-4 output-panel">
+        <div id="output-panel" class="bg-gray-900 w-1/3 overflow-y-auto p-4 output-panel flex flex-col">
             <h2 class="font-semibold mb-4">Output</h2>
-            <div id="output-content" class="whitespace-pre-wrap"></div>
+            <div id="output-tabs" class="flex border-b border-gray-700 mb-2">
+                <button class="tab-btn px-4 py-2 border-b-2 border-blue-500 text-blue-300" data-tab="output">Console</button>
+                <button class="tab-btn px-4 py-2" data-tab="html-output">HTML Output</button>
+            </div>
+            <div id="output-content" class="whitespace-pre-wrap flex-1 overflow-auto"></div>
+            <div id="html-output-content" class="hidden flex-1 overflow-auto">
+                <iframe id="html-output-frame" class="html-output"></iframe>
+            </div>
         </div>
     </main>
 
@@ -117,7 +153,7 @@
 
     <script>
         // Initialize application when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             // Application state
             const state = {
                 currentLanguage: 'python',
@@ -133,10 +169,35 @@
                 projectName: 'Untitled Project'
             };
 
+            // Initialize Pyodide
+            let pyodide;
+            async function loadPyodide() {
+                statusElement.textContent = 'Loading Python runtime...';
+                try {
+                    pyodide = await loadPyodide({
+                        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/"
+                    });
+                    statusElement.textContent = 'Python runtime loaded';
+                    setTimeout(() => {
+                        if (statusElement.textContent === 'Python runtime loaded') {
+                            statusElement.textContent = 'Idle';
+                        }
+                    }, 2000);
+                } catch (error) {
+                    statusElement.textContent = 'Failed to load Python runtime';
+                    console.error('Pyodide loading error:', error);
+                }
+            }
+
+            // Load Pyodide
+            await loadPyodide();
+
             // DOM elements
             const languageSelect = document.getElementById('language-select');
             const projectNameInput = document.getElementById('project-name');
             const runButton = document.getElementById('run-btn');
+            const runText = document.getElementById('run-text');
+            const runSpinner = document.getElementById('run-spinner');
             const saveButton = document.getElementById('save-btn');
             const downloadButton = document.getElementById('download-btn');
             const uploadButton = document.getElementById('upload-btn');
@@ -146,11 +207,14 @@
             const dependencyFiles = document.getElementById('dependency-files');
             const addDependencyButton = document.getElementById('add-dependency');
             const outputContent = document.getElementById('output-content');
+            const htmlOutputFrame = document.getElementById('html-output-frame');
+            const htmlOutputContent = document.getElementById('html-output-content');
             const statusElement = document.getElementById('status');
             const dependencyModal = document.getElementById('dependency-modal');
             const dependencyType = document.getElementById('dependency-type');
             const createDependency = document.getElementById('create-dependency');
             const cancelDependency = document.getElementById('cancel-dependency');
+            const tabButtons = document.querySelectorAll('.tab-btn');
 
             // Initialize Monaco Editor
             let editor;
@@ -187,6 +251,27 @@
             addDependencyButton.addEventListener('click', showDependencyModal);
             createDependency.addEventListener('click', createDependencyFile);
             cancelDependency.addEventListener('click', hideDependencyModal);
+            
+            // Tab switching
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const tab = button.dataset.tab;
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
+                        btn.classList.add('text-gray-400');
+                    });
+                    button.classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
+                    button.classList.remove('text-gray-400');
+                    
+                    if (tab === 'output') {
+                        outputContent.classList.remove('hidden');
+                        htmlOutputContent.classList.add('hidden');
+                    } else if (tab === 'html-output') {
+                        outputContent.classList.add('hidden');
+                        htmlOutputContent.classList.remove('hidden');
+                    }
+                });
+            });
 
             // Initialize file tree
             updateFileTree();
@@ -223,7 +308,7 @@
                 fileExplorer.classList.toggle('overflow-hidden');
                 
                 const toggleIcon = toggleExplorer.textContent;
-                toggleExplorer.textContent = toggleIcon === '→' ? '←' : '→';
+                toggleExplorter.textContent = toggleIcon === '→' ? '←' : '→';
             }
 
             function showDependencyModal() {
@@ -330,7 +415,7 @@
                         fileElement.className = `flex justify-between items-center p-1 hover:bg-gray-800 rounded cursor-pointer ${fileName === state.currentFile ? 'bg-gray-700' : ''}`;
                         fileElement.innerHTML = `
                             <span class="truncate">${fileName}</span>
-                            ${fileName !== 'main.py' && fileName !== 'main.js' && fileName !== 'main.cpp' && fileName !== 'Main.java' && fileName !== 'main.rb' && fileName !== 'main.go' ? 
+                            ${fileName !== 'main.py' && fileName !== 'main.js' && fileName !== 'main.cpp' && fileName !== 'Main.java' && fileName !== 'main.rb' && fileName !== 'main.go' && fileName !== 'index.html' ? 
                             `<button class="text-red-500 hover:text-red-400 delete-file" data-file="${fileName}">×</button>` : ''}
                         `;
                         
@@ -474,21 +559,155 @@
 
             async function runCode() {
                 statusElement.textContent = 'Running...';
+                runSpinner.classList.remove('hidden');
+                runText.textContent = 'Running';
                 outputContent.textContent = '';
                 
                 try {
                     const code = editor.getValue();
                     const language = state.currentLanguage;
                     
-                    // Simulate code execution (in a real implementation, this would use Pyodide, WebAssembly, etc.)
-                    setTimeout(() => {
-                        outputContent.textContent = `Code executed successfully for ${language}\n\nSimulated output:\nHello, World!`;
-                        statusElement.textContent = 'Execution completed';
-                    }, 1000);
+                    // Clear HTML output if it exists
+                    htmlOutputFrame.srcdoc = '';
                     
+                    // Execute based on language
+                    switch(language) {
+                        case 'python':
+                            await runPythonCode(code);
+                            break;
+                        case 'javascript':
+                            runJavaScriptCode(code);
+                            break;
+                        case 'html':
+                            runHTMLCode(code);
+                            break;
+                        case 'cpp':
+                            outputContent.textContent = 'C++ execution requires Emscripten setup. This would compile to WebAssembly in a full implementation.';
+                            break;
+                        case 'java':
+                            outputContent.textContent = 'Java execution requires CheerpJ or similar WebAssembly compiler. This would run Java in browser in a full implementation.';
+                            break;
+                        case 'ruby':
+                            outputContent.textContent = 'Ruby execution requires Opal or similar compiler. This would run Ruby in browser in a full implementation.';
+                            break;
+                        case 'go':
+                            outputContent.textContent = 'Go execution requires GopherJS or WebAssembly target. This would run Go in browser in a full implementation.';
+                            break;
+                        default:
+                            outputContent.textContent = `Unsupported language: ${language}`;
+                    }
+                    
+                    statusElement.textContent = 'Execution completed';
                 } catch (error) {
                     outputContent.textContent = `Error: ${error.message}`;
                     statusElement.textContent = 'Error';
+                } finally {
+                    runSpinner.classList.add('hidden');
+                    runText.textContent = 'Run';
+                }
+            }
+
+            async function runPythonCode(code) {
+                if (!pyodide) {
+                    outputContent.textContent = 'Python runtime not loaded yet. Please wait...';
+                    return;
+                }
+                
+                try {
+                    // Check for requirements.txt and install dependencies
+                    if (state.files['requirements.txt']) {
+                        outputContent.textContent = 'Installing dependencies from requirements.txt...';
+                        const requirements = state.files['requirements.txt'].content;
+                        const lines = requirements.split('\n');
+                        
+                        for (const line of lines) {
+                            const packageLine = line.trim();
+                            // Skip empty lines and comments
+                            if (!packageLine || packageLine.startsWith('#')) continue;
+                            
+                            try {
+                                outputContent.textContent += `\nInstalling ${packageLine}...`;
+                                await pyodide.loadPackage(['micropip']);
+                                const micropip = pyodide.pyimport('micropip');
+                                await micropip.install(packageLine);
+                                outputContent.textContent += ` Done`;
+                            } catch (err) {
+                                outputContent.textContent += ` Error: ${err.message}`;
+                            }
+                        }
+                    }
+                    
+                    // Execute the Python code
+                    outputContent.textContent += '\n\nRunning code...\n';
+                    const result = await pyodide.runPythonAsync(code);
+                    if (result !== undefined) {
+                        outputContent.textContent += result.toString();
+                    }
+                } catch (error) {
+                    outputContent.textContent += `\nPython error: ${error.message}`;
+                }
+            }
+
+            function runJavaScriptCode(code) {
+                try {
+                    // Check for package.json to simulate dependency management
+                    if (state.files['package.json']) {
+                        outputContent.textContent = 'Note: Package.json detected. In a full implementation, this would load dependencies from a CDN.\n\n';
+                    }
+                    
+                    // Capture console.log output
+                    const originalConsoleLog = console.log;
+                    const logs = [];
+                    console.log = function() {
+                        logs.push(Array.from(arguments).join(' '));
+                        originalConsoleLog.apply(console, arguments);
+                    };
+                    
+                    // Execute the JavaScript code
+                    if (code.includes('import ') || code.includes('require(')) {
+                        outputContent.textContent += 'Note: Imports detected. In a full implementation, this would load modules from a CDN.\n\n';
+                    }
+                    
+                    // Use Babel to transpile modern JS if needed
+                    try {
+                        const transpiledCode = Babel.transform(code, { presets: ['env'] }).code;
+                        eval(transpiledCode);
+                    } catch (e) {
+                        // If Babel fails, try direct execution
+                        eval(code);
+                    }
+                    
+                    // Restore console.log
+                    console.log = originalConsoleLog;
+                    
+                    // Display captured logs
+                    if (logs.length > 0) {
+                        outputContent.textContent += logs.join('\n');
+                    } else {
+                        outputContent.textContent += 'Code executed successfully (no output)';
+                    }
+                } catch (error) {
+                    outputContent.textContent += `JavaScript error: ${error.message}`;
+                }
+            }
+
+            function runHTMLCode(code) {
+                try {
+                    // Show HTML output in the iframe
+                    htmlOutputFrame.srcdoc = code;
+                    
+                    // Switch to HTML output tab
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
+                        btn.classList.add('text-gray-400');
+                    });
+                    document.querySelector('[data-tab="html-output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
+                    outputContent.classList.add('hidden');
+                    htmlOutputContent.classList.remove('hidden');
+                    
+                    outputContent.textContent = 'HTML rendered successfully. View output in HTML tab.';
+                } catch (error) {
+                    outputContent.textContent = `HTML error: ${error.message}`;
                 }
             }
 
@@ -533,6 +752,7 @@
                     case 'java': return 'java';
                     case 'ruby': return 'rb';
                     case 'go': return 'go';
+                    case 'html': return 'html';
                     default: return 'txt';
                 }
             }
@@ -551,6 +771,8 @@
                         return '# Write your Ruby code here\nputs "Hello, World!"';
                     case 'go':
                         return 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}';
+                    case 'html':
+                        return '<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>';
                     default:
                         return '';
                 }
