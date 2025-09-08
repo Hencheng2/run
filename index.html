@@ -91,6 +91,16 @@
                     <option value="python">Python</option>
                     <option value="javascript">JavaScript</option>
                     <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="cpp">C++</option>
+                    <option value="java">Java</option>
+                    <option value="php">PHP</option>
+                    <option value="ruby">Ruby</option>
+                    <option value="go">Go</option>
+                    <option value="rust">Rust</option>
+                    <option value="sql">SQL</option>
+                    <option value="swift">Swift</option>
+                    <option value="typescript">TypeScript</option>
                 </select>
             </div>
             <input type="text" id="project-name" placeholder="Project Name" class="bg-gray-700 text-white p-2 rounded w-40" value="Untitled Project">
@@ -102,7 +112,7 @@
             </button>
             <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
             <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
-            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json">
+            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json,.css,.cpp,.java,.php,.rb,.go,.rs,.sql,.swift,.ts">
             <label for="upload-file" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload File</label>
         </div>
     </header>
@@ -294,17 +304,11 @@ print("Hello, World!")</textarea>
                     let language = 'text';
                     
                     // Determine language from extension
-                    switch(extension) {
-                        case 'py': language = 'python'; break;
-                        case 'js': language = 'javascript'; break;
-                        case 'html': language = 'html'; break;
-                        case 'css': language = 'css'; break;
-                        case 'json': language = 'json'; break;
-                    }
+                    language = getLanguageFromExtension(fileName);
                     
                     state.files[fileName] = {
                         name: fileName,
-                        content: '',
+                        content: getDefaultCode(language),
                         language: language
                     };
                     
@@ -475,6 +479,36 @@ print("Hello, World!")</textarea>
                         case 'html':
                             runHTMLCode(code);
                             break;
+                        case 'css':
+                            runCSSCode(code);
+                            break;
+                        case 'cpp':
+                            runCppCode(code);
+                            break;
+                        case 'java':
+                            runJavaCode(code);
+                            break;
+                        case 'php':
+                            runPHPCode(code);
+                            break;
+                        case 'ruby':
+                            runRubyCode(code);
+                            break;
+                        case 'go':
+                            runGoCode(code);
+                            break;
+                        case 'rust':
+                            runRustCode(code);
+                            break;
+                        case 'sql':
+                            runSQLCode(code);
+                            break;
+                        case 'swift':
+                            runSwiftCode(code);
+                            break;
+                        case 'typescript':
+                            runTypeScriptCode(code);
+                            break;
                         default:
                             outputContent.textContent = `Unsupported language: ${language}`;
                     }
@@ -517,7 +551,7 @@ print("Hello, World!")</textarea>
                     if (output) {
                         outputContent.textContent = output;
                     } else {
-                        outputContent.textContent = 'Code executed successfully (no output)';
+                        outputContent.textContent = 'Python code executed successfully (no output)';
                     }
                 } catch (error) {
                     outputContent.textContent = `Python error: ${error.message}`;
@@ -544,7 +578,7 @@ print("Hello, World!")</textarea>
                     if (logs.length > 0) {
                         outputContent.textContent = logs.join('\n');
                     } else {
-                        outputContent.textContent = 'Code executed successfully (no output)';
+                        outputContent.textContent = 'JavaScript code executed successfully (no output)';
                     }
                 } catch (error) {
                     outputContent.textContent = `JavaScript error: ${error.message}`;
@@ -568,6 +602,89 @@ print("Hello, World!")</textarea>
                     outputContent.textContent = 'HTML rendered successfully. View output in HTML tab.';
                 } catch (error) {
                     outputContent.textContent = `HTML error: ${error.message}`;
+                }
+            }
+
+            function runCSSCode(code) {
+                try {
+                    // Create a style element and add it to the HTML output
+                    const htmlWithCSS = `<style>${code}</style><div class="css-output"><h1>CSS Output Preview</h1><p>This is a preview of your CSS styles.</p><button class="btn">Styled Button</button></div>`;
+                    htmlOutputFrame.srcdoc = htmlWithCSS;
+                    
+                    // Switch to HTML output tab
+                    tabButtons.forEach(btn => {
+                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
+                        btn.classList.add('text-gray-400');
+                    });
+                    document.querySelector('[data-tab="html-output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
+                    outputContent.classList.add('hidden');
+                    htmlOutputContent.classList.remove('hidden');
+                    
+                    outputContent.textContent = 'CSS styles applied. View output in HTML tab.';
+                } catch (error) {
+                    outputContent.textContent = `CSS error: ${error.message}`;
+                }
+            }
+
+            function runCppCode(code) {
+                outputContent.textContent = "C++ code would be compiled and executed here.\n\nIn a full implementation, this would use Emscripten to compile C++ to WebAssembly.\n\nYour code:\n\n" + code;
+            }
+
+            function runJavaCode(code) {
+                outputContent.textContent = "Java code would be compiled and executed here.\n\nIn a full implementation, this would use CheerpJ or similar technology to run Java in the browser.\n\nYour code:\n\n" + code;
+            }
+
+            function runPHPCode(code) {
+                outputContent.textContent = "PHP code would be executed here.\n\nIn a full implementation, this would require a PHP interpreter or server-side processing.\n\nYour code:\n\n" + code;
+            }
+
+            function runRubyCode(code) {
+                outputContent.textContent = "Ruby code would be executed here.\n\nIn a full implementation, this would use Opal or similar Ruby-to-JS transpiler.\n\nYour code:\n\n" + code;
+            }
+
+            function runGoCode(code) {
+                outputContent.textContent = "Go code would be compiled and executed here.\n\nIn a full implementation, this would use GopherJS or WebAssembly target.\n\nYour code:\n\n" + code;
+            }
+
+            function runRustCode(code) {
+                outputContent.textContent = "Rust code would be compiled and executed here.\n\nIn a full implementation, this would compile Rust to WebAssembly.\n\nYour code:\n\n" + code;
+            }
+
+            function runSQLCode(code) {
+                outputContent.textContent = "SQL queries would be executed here.\n\nIn a full implementation, this would connect to a database or use a SQL.js.\n\nYour code:\n\n" + code;
+            }
+
+            function runSwiftCode(code) {
+                outputContent.textContent = "Swift code would be compiled and executed here.\n\nIn a full implementation, this would use WebAssembly target for Swift.\n\nYour code:\n\n" + code;
+            }
+
+            function runTypeScriptCode(code) {
+                try {
+                    // Simple TypeScript execution simulation
+                    // In a real implementation, this would use the TypeScript compiler
+                    
+                    // Capture console.log output
+                    const originalConsoleLog = console.log;
+                    const logs = [];
+                    console.log = function() {
+                        logs.push(Array.from(arguments).join(' '));
+                        originalConsoleLog.apply(console, arguments);
+                    };
+                    
+                    // Execute the TypeScript code (as JavaScript since we can't compile TS in browser easily)
+                    eval(code.replace(/:\s*[^;]+;/g, ';')); // Simple type stripping
+                    
+                    // Restore console.log
+                    console.log = originalConsoleLog;
+                    
+                    // Display captured logs
+                    if (logs.length > 0) {
+                        outputContent.textContent = logs.join('\n');
+                    } else {
+                        outputContent.textContent = 'TypeScript code executed successfully (no output)';
+                    }
+                } catch (error) {
+                    outputContent.textContent = `TypeScript error: ${error.message}`;
                 }
             }
 
@@ -614,6 +731,16 @@ print("Hello, World!")</textarea>
                     case 'python': return 'py';
                     case 'javascript': return 'js';
                     case 'html': return 'html';
+                    case 'css': return 'css';
+                    case 'cpp': return 'cpp';
+                    case 'java': return 'java';
+                    case 'php': return 'php';
+                    case 'ruby': return 'rb';
+                    case 'go': return 'go';
+                    case 'rust': return 'rs';
+                    case 'sql': return 'sql';
+                    case 'swift': return 'swift';
+                    case 'typescript': return 'ts';
                     default: return 'txt';
                 }
             }
@@ -626,17 +753,47 @@ print("Hello, World!")</textarea>
                         return '// Write your JavaScript code here\nconsole.log("Hello, World!");';
                     case 'html':
                         return '<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>';
+                    case 'css':
+                        return '/* Write your CSS code here */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f0f0f0;\n    color: #333;\n}\n\nh1 {\n    color: #0066cc;\n}\n\n.btn {\n    background-color: #0066cc;\n    color: white;\n    padding: 10px 20px;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}';
+                    case 'cpp':
+                        return '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}';
+                    case 'java':
+                        return 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}';
+                    case 'php':
+                        return '<?php\n// Write your PHP code here\necho "Hello, World!";\n?>';
+                    case 'ruby':
+                        return '# Write your Ruby code here\nputs "Hello, World!"';
+                    case 'go':
+                        return 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}';
+                    case 'rust':
+                        return 'fn main() {\n    println!("Hello, World!");\n}';
+                    case 'sql':
+                        return '-- Write your SQL queries here\nSELECT * FROM users WHERE active = 1;';
+                    case 'swift':
+                        return '// Write your Swift code here\nprint("Hello, World!")';
+                    case 'typescript':
+                        return '// Write your TypeScript code here\nconst message: string = "Hello, World!";\nconsole.log(message);';
                     default:
                         return '';
                 }
             }
 
             function getLanguageFromExtension(filename) {
-                const extension = filename.split('.').pop();
+                const extension = filename.split('.').pop().toLowerCase();
                 switch(extension) {
                     case 'py': return 'python';
                     case 'js': return 'javascript';
                     case 'html': return 'html';
+                    case 'css': return 'css';
+                    case 'cpp': case 'cc': case 'cxx': case 'h': case 'hpp': return 'cpp';
+                    case 'java': return 'java';
+                    case 'php': return 'php';
+                    case 'rb': return 'ruby';
+                    case 'go': return 'go';
+                    case 'rs': return 'rust';
+                    case 'sql': return 'sql';
+                    case 'swift': return 'swift';
+                    case 'ts': return 'typescript';
                     case 'txt': return 'text';
                     case 'json': return 'text';
                     default: return 'text';
@@ -645,9 +802,10 @@ print("Hello, World!")</textarea>
 
             function isDependencyFile(fileName) {
                 const dependencyFiles = [
-                    'requirements.txt', 'package.json'
+                    'requirements.txt', 'package.json', 'composer.json', 'gemfile', 'go.mod', 
+                    'cargo.toml', 'pom.xml', 'build.gradle'
                 ];
-                return dependencyFiles.includes(fileName);
+                return dependencyFiles.includes(fileName.toLowerCase());
             }
 
             // Load saved project if available
