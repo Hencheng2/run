@@ -58,9 +58,26 @@
         }
         .file-item {
             transition: background-color 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .file-item:hover {
             background-color: #2d2d30;
+        }
+        .delete-btn {
+            opacity: 0;
+            transition: opacity 0.2s;
+            color: #f87171;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .file-item:hover .delete-btn {
+            opacity: 1;
+        }
+        .delete-btn:hover {
+            background-color: #7f1d1d;
         }
     </style>
 </head>
@@ -96,18 +113,15 @@
         <div class="bg-gray-900 w-64 overflow-y-auto p-4">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="font-semibold">Files</h2>
+                <button id="new-file-btn" class="text-blue-400 hover:text-blue-300 text-sm">+ New</button>
             </div>
             <div id="file-tree" class="mb-4">
-                <div class="file-item p-2 rounded cursor-pointer bg-gray-700" data-file="main.py">
-                    <span>main.py</span>
-                </div>
+                <!-- Files will be dynamically added here -->
             </div>
             <div>
                 <h3 class="font-semibold mb-2">Dependency Files</h3>
                 <div id="dependency-files">
-                    <div class="file-item p-2 rounded cursor-pointer" data-file="requirements.txt">
-                        <span>requirements.txt</span>
-                    </div>
+                    <!-- Dependency files will be dynamically added here -->
                 </div>
             </div>
         </div>
@@ -181,7 +195,11 @@ print("Hello, World!")</textarea>
             const statusElement = document.getElementById('status');
             const currentFileElement = document.getElementById('current-file');
             const tabButtons = document.querySelectorAll('.tab-btn');
-            const fileItems = document.querySelectorAll('.file-item');
+            const newFileBtn = document.getElementById('new-file-btn');
+
+            // Initialize file tree
+            updateFileTree();
+            updateDependencyFiles();
 
             // Set up event listeners
             languageSelect.addEventListener('change', handleLanguageChange);
@@ -191,6 +209,7 @@ print("Hello, World!")</textarea>
             saveButton.addEventListener('click', saveProject);
             downloadButton.addEventListener('click', downloadProject);
             uploadFileButton.addEventListener('change', handleFileUpload);
+            newFileBtn.addEventListener('click', addNewFile);
             
             // Tab switching
             tabButtons.forEach(button => {
@@ -213,21 +232,6 @@ print("Hello, World!")</textarea>
                 });
             });
 
-            // File selection
-            fileItems.forEach(item => {
-                item.addEventListener('click', () => {
-                    const fileName = item.dataset.file;
-                    switchFile(fileName);
-                    
-                    // Update UI
-                    fileItems.forEach(i => i.classList.remove('bg-gray-700'));
-                    item.classList.add('bg-gray-700');
-                });
-            });
-
-            // Initialize with Python file selected
-            document.querySelector('[data-file="main.py"]').classList.add('bg-gray-700');
-
             // Event handlers
             function handleLanguageChange() {
                 state.currentLanguage = languageSelect.value;
@@ -241,17 +245,13 @@ print("Hello, World!")</textarea>
                         content: getDefaultCode(state.currentLanguage),
                         language: state.currentLanguage
                     };
+                    
+                    // Add to file tree
+                    updateFileTree();
                 }
                 
                 // Switch to the new file
                 switchFile(newFileName);
-                
-                // Update UI
-                fileItems.forEach(i => i.classList.remove('bg-gray-700'));
-                const fileElement = document.querySelector(`[data-file="${newFileName}"]`);
-                if (fileElement) {
-                    fileElement.classList.add('bg-gray-700');
-                }
             }
 
             function handleProjectNameChange() {
@@ -263,6 +263,8 @@ print("Hello, World!")</textarea>
             }
 
             function switchFile(fileName) {
+                if (!state.files[fileName]) return;
+                
                 state.currentFile = fileName;
                 const file = state.files[fileName];
                 
@@ -275,6 +277,148 @@ print("Hello, World!")</textarea>
                     state.currentLanguage = file.language;
                     languageSelect.value = file.language;
                 }
+                
+                // Update UI selection
+                document.querySelectorAll('.file-item').forEach(item => {
+                    item.classList.remove('bg-gray-700');
+                    if (item.dataset.file === fileName) {
+                        item.classList.add('bg-gray-700');
+                    }
+                });
+            }
+
+            function addNewFile() {
+                const fileName = prompt('Enter file name:');
+                if (fileName) {
+                    const extension = fileName.split('.').pop();
+                    let language = 'text';
+                    
+                    // Determine language from extension
+                    switch(extension) {
+                        case 'py': language = 'python'; break;
+                        case 'js': language = 'javascript'; break;
+                        case 'html': language = 'html'; break;
+                        case 'css': language = 'css'; break;
+                        case 'json': language = 'json'; break;
+                    }
+                    
+                    state.files[fileName] = {
+                        name: fileName,
+                        content: '',
+                        language: language
+                    };
+                    
+                    // Update file tree
+                    if (isDependencyFile(fileName)) {
+                        updateDependencyFiles();
+                    } else {
+                        updateFileTree();
+                    }
+                    
+                    // Switch to the new file
+                    switchFile(fileName);
+                }
+            }
+
+            function deleteFile(fileName) {
+                if (confirm(`Are you sure you want to delete ${fileName}?`)) {
+                    // Don't allow deleting the current file
+                    if (fileName === state.currentFile) {
+                        // Find another file to switch to
+                        const otherFiles = Object.keys(state.files).filter(name => name !== fileName);
+                        if (otherFiles.length > 0) {
+                            switchFile(otherFiles[0]);
+                        } else {
+                            // Create a default file if no files remain
+                            const extension = getExtensionForLanguage(state.currentLanguage);
+                            const newFileName = `main.${extension}`;
+                            state.files[newFileName] = {
+                                name: newFileName,
+                                content: getDefaultCode(state.currentLanguage),
+                                language: state.currentLanguage
+                            };
+                            switchFile(newFileName);
+                        }
+                    }
+                    
+                    // Delete the file
+                    delete state.files[fileName];
+                    
+                    // Update UI
+                    if (isDependencyFile(fileName)) {
+                        updateDependencyFiles();
+                    } else {
+                        updateFileTree();
+                    }
+                }
+            }
+
+            function updateFileTree() {
+                fileTree.innerHTML = '';
+                
+                Object.keys(state.files).forEach(fileName => {
+                    if (!isDependencyFile(fileName)) {
+                        const fileElement = document.createElement('div');
+                        fileElement.className = 'file-item p-2 rounded cursor-pointer';
+                        fileElement.dataset.file = fileName;
+                        fileElement.innerHTML = `
+                            <span>${fileName}</span>
+                            <span class="delete-btn" data-file="${fileName}">×</span>
+                        `;
+                        
+                        if (fileName === state.currentFile) {
+                            fileElement.classList.add('bg-gray-700');
+                        }
+                        
+                        fileElement.addEventListener('click', (e) => {
+                            if (!e.target.classList.contains('delete-btn')) {
+                                switchFile(fileName);
+                            }
+                        });
+                        
+                        const deleteBtn = fileElement.querySelector('.delete-btn');
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            deleteFile(fileName);
+                        });
+                        
+                        fileTree.appendChild(fileElement);
+                    }
+                });
+            }
+
+            function updateDependencyFiles() {
+                dependencyFiles.innerHTML = '';
+                
+                Object.keys(state.files).forEach(fileName => {
+                    if (isDependencyFile(fileName)) {
+                        const fileElement = document.createElement('div');
+                        fileElement.className = 'file-item p-2 rounded cursor-pointer';
+                        fileElement.dataset.file = fileName;
+                        fileElement.innerHTML = `
+                            <span>${fileName}</span>
+                            <span class="delete-btn" data-file="${fileName}">×</span>
+                        `;
+                        
+                        if (fileName === state.currentFile) {
+                            fileElement.classList.add('bg-gray-700');
+                        }
+                        
+                        fileElement.addEventListener('click', (e) => {
+                            if (!e.target.classList.contains('delete-btn')) {
+                                switchFile(fileName);
+                            }
+                        });
+                        
+                        const deleteBtn = fileElement.querySelector('.delete-btn');
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            deleteFile(fileName);
+                        });
+                        
+                        dependencyFiles.appendChild(fileElement);
+                    }
+                });
             }
 
             function handleFileUpload(event) {
@@ -292,23 +436,11 @@ print("Hello, World!")</textarea>
                             language: getLanguageFromExtension(file.name)
                         };
                         
-                        // Add to file tree if it's a new file
-                        if (!document.querySelector(`[data-file="${file.name}"]`)) {
-                            const isDependency = isDependencyFile(file.name);
-                            const container = isDependency ? dependencyFiles : fileTree;
-                            
-                            const fileElement = document.createElement('div');
-                            fileElement.className = 'file-item p-2 rounded cursor-pointer';
-                            fileElement.dataset.file = file.name;
-                            fileElement.innerHTML = `<span>${file.name}</span>`;
-                            
-                            fileElement.addEventListener('click', () => {
-                                switchFile(file.name);
-                                document.querySelectorAll('.file-item').forEach(i => i.classList.remove('bg-gray-700'));
-                                fileElement.classList.add('bg-gray-700');
-                            });
-                            
-                            container.appendChild(fileElement);
+                        // Update file tree
+                        if (isDependencyFile(file.name)) {
+                            updateDependencyFiles();
+                        } else {
+                            updateFileTree();
                         }
                     };
                     
@@ -533,6 +665,10 @@ print("Hello, World!")</textarea>
                     if (state.files[state.currentFile]) {
                         switchFile(state.currentFile);
                     }
+                    
+                    // Update file trees
+                    updateFileTree();
+                    updateDependencyFiles();
                 } catch (error) {
                     console.error('Error loading saved project:', error);
                 }
