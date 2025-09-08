@@ -79,6 +79,55 @@
         .delete-btn:hover {
             background-color: #7f1d1d;
         }
+        .folder {
+            margin-left: 8px;
+        }
+        .folder-contents {
+            margin-left: 16px;
+            display: none;
+        }
+        .folder.open .folder-contents {
+            display: block;
+        }
+        .folder-toggle {
+            cursor: pointer;
+            margin-right: 4px;
+            display: inline-block;
+            width: 12px;
+            text-align: center;
+        }
+        
+        /* Syntax highlighting */
+        .syntax-comment {
+            color: #6A9955;
+        }
+        .syntax-keyword {
+            color: #C586C0;
+        }
+        .syntax-string {
+            color: #CE9178;
+        }
+        .syntax-function {
+            color: #DCDCAA;
+        }
+        .syntax-number {
+            color: #B5CEA8;
+        }
+        .syntax-operator {
+            color: #D4D4D4;
+        }
+        .syntax-tag {
+            color: #569CD6;
+        }
+        .syntax-attribute {
+            color: #9CDCFE;
+        }
+        .syntax-selector {
+            color: #D7BA7D;
+        }
+        .syntax-property {
+            color: #9CDCFE;
+        }
     </style>
 </head>
 <body class="h-screen flex flex-col">
@@ -112,8 +161,9 @@
             </button>
             <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
             <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
-            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json,.css,.cpp,.java,.php,.rb,.go,.rs,.sql,.swift,.ts">
+            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json,.css,.cpp,.java,.php,.rb,.go,.rs,.sql,.swift,.ts" multiple>
             <label for="upload-file" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload File</label>
+            <button id="new-folder-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">New Folder</button>
         </div>
     </header>
 
@@ -123,10 +173,10 @@
         <div class="bg-gray-900 w-64 overflow-y-auto p-4">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="font-semibold">Files</h2>
-                <button id="new-file-btn" class="text-blue-400 hover:text-blue-300 text-sm">+ New</button>
+                <button id="new-file-btn" class="text-blue-400 hover:text-blue-300 text-sm">+ New File</button>
             </div>
             <div id="file-tree" class="mb-4">
-                <!-- Files will be dynamically added here -->
+                <!-- Files and folders will be dynamically added here -->
             </div>
             <div>
                 <h3 class="font-semibold mb-2">Dependency Files</h3>
@@ -176,12 +226,26 @@ print("Hello, World!")</textarea>
                     'main.py': {
                         name: 'main.py',
                         content: '# Write your Python code here\nprint("Hello, World!")',
-                        language: 'python'
+                        language: 'python',
+                        path: '/'
                     },
                     'requirements.txt': {
                         name: 'requirements.txt',
                         content: '# Add your Python dependencies here\n# numpy==1.21.0',
-                        language: 'text'
+                        language: 'text',
+                        path: '/'
+                    }
+                },
+                folders: {
+                    'src': {
+                        name: 'src',
+                        path: '/',
+                        contents: []
+                    },
+                    'utils': {
+                        name: 'utils',
+                        path: '/src/',
+                        contents: []
                     }
                 },
                 projectName: 'Untitled Project'
@@ -206,6 +270,7 @@ print("Hello, World!")</textarea>
             const currentFileElement = document.getElementById('current-file');
             const tabButtons = document.querySelectorAll('.tab-btn');
             const newFileBtn = document.getElementById('new-file-btn');
+            const newFolderBtn = document.getElementById('new-folder-btn');
 
             // Initialize file tree
             updateFileTree();
@@ -220,6 +285,7 @@ print("Hello, World!")</textarea>
             downloadButton.addEventListener('click', downloadProject);
             uploadFileButton.addEventListener('change', handleFileUpload);
             newFileBtn.addEventListener('click', addNewFile);
+            newFolderBtn.addEventListener('click', addNewFolder);
             
             // Tab switching
             tabButtons.forEach(button => {
@@ -253,7 +319,8 @@ print("Hello, World!")</textarea>
                     state.files[newFileName] = {
                         name: newFileName,
                         content: getDefaultCode(state.currentLanguage),
-                        language: state.currentLanguage
+                        language: state.currentLanguage,
+                        path: '/'
                     };
                     
                     // Add to file tree
@@ -269,7 +336,10 @@ print("Hello, World!")</textarea>
             }
 
             function handleEditorChange() {
-                state.files[state.currentFile].content = editor.value;
+                if (state.files[state.currentFile]) {
+                    state.files[state.currentFile].content = editor.value;
+                }
+                applySyntaxHighlighting();
             }
 
             function switchFile(fileName) {
@@ -295,21 +365,21 @@ print("Hello, World!")</textarea>
                         item.classList.add('bg-gray-700');
                     }
                 });
+                
+                // Apply syntax highlighting
+                applySyntaxHighlighting();
             }
 
             function addNewFile() {
                 const fileName = prompt('Enter file name:');
                 if (fileName) {
-                    const extension = fileName.split('.').pop();
-                    let language = 'text';
-                    
-                    // Determine language from extension
-                    language = getLanguageFromExtension(fileName);
+                    const language = getLanguageFromExtension(fileName);
                     
                     state.files[fileName] = {
                         name: fileName,
                         content: getDefaultCode(language),
-                        language: language
+                        language: language,
+                        path: '/'
                     };
                     
                     // Update file tree
@@ -321,6 +391,20 @@ print("Hello, World!")</textarea>
                     
                     // Switch to the new file
                     switchFile(fileName);
+                }
+            }
+
+            function addNewFolder() {
+                const folderName = prompt('Enter folder name:');
+                if (folderName) {
+                    state.folders[folderName] = {
+                        name: folderName,
+                        path: '/',
+                        contents: []
+                    };
+                    
+                    // Update file tree
+                    updateFileTree();
                 }
             }
 
@@ -339,7 +423,8 @@ print("Hello, World!")</textarea>
                             state.files[newFileName] = {
                                 name: newFileName,
                                 content: getDefaultCode(state.currentLanguage),
-                                language: state.currentLanguage
+                                language: state.currentLanguage,
+                                path: '/'
                             };
                             switchFile(newFileName);
                         }
@@ -360,35 +445,77 @@ print("Hello, World!")</textarea>
             function updateFileTree() {
                 fileTree.innerHTML = '';
                 
-                Object.keys(state.files).forEach(fileName => {
-                    if (!isDependencyFile(fileName)) {
-                        const fileElement = document.createElement('div');
-                        fileElement.className = 'file-item p-2 rounded cursor-pointer';
-                        fileElement.dataset.file = fileName;
-                        fileElement.innerHTML = `
-                            <span>${fileName}</span>
-                            <span class="delete-btn" data-file="${fileName}">×</span>
+                // Add folders first
+                Object.keys(state.folders).forEach(folderName => {
+                    const folder = state.folders[folderName];
+                    if (folder.path === '/') {
+                        const folderElement = document.createElement('div');
+                        folderElement.className = 'folder';
+                        folderElement.innerHTML = `
+                            <div class="file-item p-2 rounded cursor-pointer">
+                                <span class="folder-toggle">▶</span>
+                                <span>${folderName}</span>
+                            </div>
+                            <div class="folder-contents"></div>
                         `;
                         
-                        if (fileName === state.currentFile) {
-                            fileElement.classList.add('bg-gray-700');
-                        }
+                        const folderToggle = folderElement.querySelector('.folder-toggle');
+                        const folderContents = folderElement.querySelector('.folder-contents');
                         
-                        fileElement.addEventListener('click', (e) => {
-                            if (!e.target.classList.contains('delete-btn')) {
-                                switchFile(fileName);
+                        folderToggle.addEventListener('click', () => {
+                            folderElement.classList.toggle('open');
+                            folderToggle.textContent = folderElement.classList.contains('open') ? '▼' : '▶';
+                        });
+                        
+                        // Add files in this folder
+                        Object.keys(state.files).forEach(fileName => {
+                            const file = state.files[fileName];
+                            if (file.path === `/${folderName}/`) {
+                                const fileElement = createFileElement(fileName);
+                                folderContents.appendChild(fileElement);
                             }
                         });
                         
-                        const deleteBtn = fileElement.querySelector('.delete-btn');
-                        deleteBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            deleteFile(fileName);
-                        });
-                        
+                        fileTree.appendChild(folderElement);
+                    }
+                });
+                
+                // Add root files
+                Object.keys(state.files).forEach(fileName => {
+                    const file = state.files[fileName];
+                    if (file.path === '/' && !isDependencyFile(fileName)) {
+                        const fileElement = createFileElement(fileName);
                         fileTree.appendChild(fileElement);
                     }
                 });
+            }
+
+            function createFileElement(fileName) {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'file-item p-2 rounded cursor-pointer';
+                fileElement.dataset.file = fileName;
+                fileElement.innerHTML = `
+                    <span>${fileName}</span>
+                    <span class="delete-btn" data-file="${fileName}">×</span>
+                `;
+                
+                if (fileName === state.currentFile) {
+                    fileElement.classList.add('bg-gray-700');
+                }
+                
+                fileElement.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('delete-btn')) {
+                        switchFile(fileName);
+                    }
+                });
+                
+                const deleteBtn = fileElement.querySelector('.delete-btn');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteFile(fileName);
+                });
+                
+                return fileElement;
             }
 
             function updateDependencyFiles() {
@@ -437,7 +564,8 @@ print("Hello, World!")</textarea>
                         state.files[file.name] = {
                             name: file.name,
                             content: content,
-                            language: getLanguageFromExtension(file.name)
+                            language: getLanguageFromExtension(file.name),
+                            path: '/'
                         };
                         
                         // Update file tree
@@ -453,6 +581,22 @@ print("Hello, World!")</textarea>
                 
                 // Reset the file input
                 event.target.value = '';
+            }
+
+            function applySyntaxHighlighting() {
+                // This is a simplified syntax highlighting approach
+                // In a real implementation, you would use a library like Prism.js or Highlight.js
+                const code = editor.value;
+                const language = state.currentLanguage;
+                
+                // Clear previous highlighting
+                editor.classList.remove('syntax-python', 'syntax-js', 'syntax-comment', 
+                                      'syntax-keyword', 'syntax-string', 'syntax-function', 
+                                      'syntax-number', 'syntax-operator', 'syntax-tag',
+                                      'syntax-attribute', 'syntax-selector', 'syntax-property');
+                
+                // For a real implementation, you would want to use a proper syntax highlighter
+                // This is just a basic example for demonstration
             }
 
             function runCode() {
