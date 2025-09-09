@@ -3,833 +3,207 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeRunner - Multi-Language Code Editor</title>
-    <!-- Tailwind CSS -->
+    <title>CodeRunner</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- CodeMirror CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css">
+    <!-- CodeMirror Theme -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/monokai.min.css">
+    <!-- CodeMirror Language Modes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/clike/clike.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/php/php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/ruby/ruby.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/go/go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/rust/rust.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/swift/swift.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/typescript/typescript.min.js"></script>
+    <!-- CodeMirror Core -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #1e1e1e;
-            color: #ffffff;
+        .CodeMirror {
+            height: 100% !important;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
         }
-        .code-editor {
-            width: 100%;
-            height: 100%;
-            background-color: #1e1e1e;
-            color: #ffffff;
-            border: none;
-            padding: 16px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            resize: none;
-            tab-size: 4;
-            -moz-tab-size: 4;
-            white-space: pre;
-            overflow: auto;
-        }
-        .btn-hover:hover {
-            background-color: rgba(0, 122, 204, 0.8);
-        }
-        .output-panel {
-            font-family: monospace;
-            white-space: pre-wrap;
-        }
-        .loading-spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #007acc;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 10px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .html-output {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: white;
-            color: black;
-        }
-        .file-item {
-            transition: background-color 0.2s;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .file-item:hover {
-            background-color: #2d2d30;
-        }
-        .delete-btn {
-            opacity: 0;
-            transition: opacity 0.2s;
-            color: #f87171;
-            cursor: pointer;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        .file-item:hover .delete-btn {
-            opacity: 1;
-        }
-        .delete-btn:hover {
-            background-color: #7f1d1d;
+        .cm-editor {
+            background-color: #1f2937;
+            color: #e5e7eb;
         }
     </style>
 </head>
-<body class="h-screen flex flex-col">
-    <!-- Header -->
-    <header class="bg-gray-800 p-4 flex items-center justify-between">
-        <div class="flex items-center space-x-4">
-            <h1 class="text-xl font-bold">CodeRunner</h1>
-            <div>
-                <select id="language-select" class="bg-gray-700 text-white p-2 rounded">
-                    <option value="python">Python</option>
-                    <option value="javascript">JavaScript</option>
-                    <option value="html">HTML</option>
-                    <option value="css">CSS</option>
-                    <option value="cpp">C++</option>
-                    <option value="java">Java</option>
-                    <option value="php">PHP</option>
-                    <option value="ruby">Ruby</option>
-                    <option value="go">Go</option>
-                    <option value="rust">Rust</option>
-                    <option value="sql">SQL</option>
-                    <option value="swift">Swift</option>
-                    <option value="typescript">TypeScript</option>
-                </select>
-            </div>
-            <input type="text" id="project-name" placeholder="Project Name" class="bg-gray-700 text-white p-2 rounded w-40" value="Untitled Project">
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
+    <header class="bg-gray-800 p-4 flex justify-between items-center">
+        <h1 class="text-2xl font-bold">CodeRunner</h1>
+        <div>
+            <select id="language" class="bg-gray-700 text-gray-100 p-2 rounded">
+                <option value="python">Python</option>
+                <option value="javascript">JavaScript</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="cpp">C++</option>
+                <option value="java">Java</option>
+                <option value="php">PHP</option>
+                <option value="ruby">Ruby</option>
+                <option value="go">Go</option>
+                <option value="rust">Rust</option>
+                <option value="sql">SQL</option>
+                <option value="swift">Swift</option>
+                <option value="typescript">TypeScript</option>
+            </select>
         </div>
-        <div class="flex space-x-2">
-            <button id="run-btn" class="bg-blue-600 text-white px-4 py-2 rounded btn-hover flex items-center">
-                <span id="run-text">Run</span>
-                <span id="run-spinner" class="loading-spinner hidden"></span>
-            </button>
-            <button id="save-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Save</button>
-            <button id="download-btn" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover">Download</button>
-            <input type="file" id="upload-file" class="hidden" accept=".py,.js,.html,.txt,.json,.css,.cpp,.java,.php,.rb,.go,.rs,.sql,.swift,.ts">
-            <label for="upload-file" class="bg-gray-700 text-white px-4 py-2 rounded btn-hover cursor-pointer">Upload File</label>
+        <div>
+            <button id="run-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded mr-2">Run</button>
+            <button id="save-btn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded mr-2">Save</button>
+            <button id="download-btn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded mr-2">Download</button>
+            <input type="file" id="upload-btn" class="hidden" accept=".py,.js,.html,.css,.cpp,.java,.php,.rb,.go,.rs,.sql,.swift,.ts">
+            <label for="upload-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded cursor-pointer">Upload File</label>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="flex flex-1 overflow-hidden">
-        <!-- File Explorer -->
-        <div class="bg-gray-900 w-64 overflow-y-auto p-4">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="font-semibold">Files</h2>
-                <button id="new-file-btn" class="text-blue-400 hover:text-blue-300 text-sm">+ New</button>
+    <div class="flex flex-1">
+        <aside class="w-64 bg-gray-800 p-4">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold">Files</h2>
+                <button class="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded mt-2">+ New</button>
             </div>
-            <div id="file-tree" class="mb-4">
-                <!-- Files will be dynamically added here -->
+            <ul>
+                <li class="bg-gray-700 p-2 rounded cursor-pointer">main.py</li>
+            </ul>
+            <div class="mt-4">
+                <h2 class="text-lg font-semibold">Dependency Files</h2>
+                <ul>
+                    <li class="bg-gray-700 p-2 rounded cursor-pointer">requirements.txt</li>
+                </ul>
             </div>
-            <div>
-                <h3 class="font-semibold mb-2">Dependency Files</h3>
-                <div id="dependency-files">
-                    <!-- Dependency files will be dynamically added here -->
+        </aside>
+
+        <main class="flex-1 p-4">
+            <div class="bg-gray-800 p-2 rounded mb-4">
+                <h2 class="text-lg font-semibold">main.py</h2>
+            </div>
+            <form id="code-form">
+                <textarea id="code-editor" name="code" class="hidden">
+# Write your Python code here
+print("Hello, World!")
+                </textarea>
+            </form>
+        </main>
+
+        <aside class="w-1/3 bg-gray-800 p-4">
+            <div class="mb-4">
+                <h2 class="text-lg font-semibold">Output</h2>
+                <div class="flex space-x-2">
+                    <button class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded">Console</button>
+                    <button class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded">HTML Output</button>
                 </div>
             </div>
-        </div>
+            <div id="output" class="bg-gray-900 p-4 rounded h-96 overflow-auto"></div>
+        </aside>
+    </div>
 
-        <!-- Code Editor -->
-        <div class="flex-1 relative flex flex-col">
-            <div class="bg-gray-800 p-2 text-sm flex justify-between">
-                <span id="current-file">main.py</span>
-            </div>
-            <textarea id="editor" class="code-editor" spellcheck="false"># Write your Python code here
-print("Hello, World!")</textarea>
-        </div>
-
-        <!-- Output Panel -->
-        <div class="bg-gray-900 w-1/3 overflow-y-auto p-4 output-panel flex flex-col">
-            <h2 class="font-semibold mb-4">Output</h2>
-            <div id="output-tabs" class="flex border-b border-gray-700 mb-2">
-                <button class="tab-btn px-4 py-2 border-b-2 border-blue-500 text-blue-300" data-tab="output">Console</button>
-                <button class="tab-btn px-4 py-2 text-gray-400" data-tab="html-output">HTML Output</button>
-            </div>
-            <div id="output-content" class="whitespace-pre-wrap flex-1 overflow-auto"></div>
-            <div id="html-output-content" class="hidden flex-1 overflow-auto">
-                <iframe id="html-output-frame" class="html-output"></iframe>
-            </div>
-        </div>
-    </main>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 p-2 flex justify-between items-center text-sm">
-        <div id="status">Idle</div>
-        <div>CodeRunner v1.0</div>
+    <footer class="bg-gray-800 p-4 text-center">
+        <p>Idle</p>
+        <p>CodeRunner v1.0</p>
     </footer>
 
     <script>
-        // Initialize application when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // Application state
-            const state = {
-                currentLanguage: 'python',
-                currentFile: 'main.py',
-                files: {
-                    'main.py': {
-                        name: 'main.py',
-                        content: '# Write your Python code here\nprint("Hello, World!")',
-                        language: 'python'
-                    },
-                    'requirements.txt': {
-                        name: 'requirements.txt',
-                        content: '# Add your Python dependencies here\n# numpy==1.21.0',
-                        language: 'text'
-                    }
-                },
-                projectName: 'Untitled Project'
+        // Initialize CodeMirror
+        const textarea = document.getElementById('code-editor');
+        const languageSelect = document.getElementById('language');
+        let editor;
+
+        function initializeEditor(mode) {
+            // Map language select values to CodeMirror modes
+            const modeMap = {
+                python: 'python',
+                javascript: 'javascript',
+                html: 'xml',
+                css: 'css',
+                cpp: 'clike',
+                java: 'clike',
+                php: 'php',
+                ruby: 'ruby',
+                go: 'go',
+                rust: 'rust',
+                sql: 'sql',
+                swift: 'swift',
+                typescript: 'typescript'
             };
 
-            // DOM elements
-            const languageSelect = document.getElementById('language-select');
-            const projectNameInput = document.getElementById('project-name');
-            const editor = document.getElementById('editor');
-            const runButton = document.getElementById('run-btn');
-            const runText = document.getElementById('run-text');
-            const runSpinner = document.getElementById('run-spinner');
-            const saveButton = document.getElementById('save-btn');
-            const downloadButton = document.getElementById('download-btn');
-            const uploadFileButton = document.getElementById('upload-file');
-            const fileTree = document.getElementById('file-tree');
-            const dependencyFiles = document.getElementById('dependency-files');
-            const outputContent = document.getElementById('output-content');
-            const htmlOutputFrame = document.getElementById('html-output-frame');
-            const htmlOutputContent = document.getElementById('html-output-content');
-            const statusElement = document.getElementById('status');
-            const currentFileElement = document.getElementById('current-file');
-            const tabButtons = document.querySelectorAll('.tab-btn');
-            const newFileBtn = document.getElementById('new-file-btn');
+            // Destroy previous editor instance if it exists
+            if (editor) {
+                editor.state.doc = null; // Clear document
+                editor.dom.remove(); // Remove editor from DOM
+            }
 
-            // Initialize file tree
-            updateFileTree();
-            updateDependencyFiles();
-
-            // Set up event listeners
-            languageSelect.addEventListener('change', handleLanguageChange);
-            projectNameInput.addEventListener('change', handleProjectNameChange);
-            editor.addEventListener('input', handleEditorChange);
-            runButton.addEventListener('click', runCode);
-            saveButton.addEventListener('click', saveProject);
-            downloadButton.addEventListener('click', downloadProject);
-            uploadFileButton.addEventListener('change', handleFileUpload);
-            newFileBtn.addEventListener('click', addNewFile);
-            
-            // Tab switching
-            tabButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const tab = button.dataset.tab;
-                    tabButtons.forEach(btn => {
-                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
-                        btn.classList.add('text-gray-400');
-                    });
-                    button.classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
-                    button.classList.remove('text-gray-400');
-                    
-                    if (tab === 'output') {
-                        outputContent.classList.remove('hidden');
-                        htmlOutputContent.classList.add('hidden');
-                    } else if (tab === 'html-output') {
-                        outputContent.classList.add('hidden');
-                        htmlOutputContent.classList.remove('hidden');
-                    }
-                });
+            editor = new CodeMirror.EditorView({
+                doc: textarea.value,
+                extensions: [
+                    CodeMirror.basicSetup,
+                    CodeMirror[modeMap[mode] || 'python'](),
+                    CodeMirror.EditorView.theme({
+                        '&': { backgroundColor: '#1f2937', color: '#e5e7eb' },
+                        '.cm-scroller': { overflow: 'auto' }
+                    })
+                ],
+                parent: textarea.parentElement
             });
 
-            // Event handlers
-            function handleLanguageChange() {
-                state.currentLanguage = languageSelect.value;
-                const extension = getExtensionForLanguage(state.currentLanguage);
-                const newFileName = `main.${extension}`;
-                
-                // Create a new file if it doesn't exist
-                if (!state.files[newFileName]) {
-                    state.files[newFileName] = {
-                        name: newFileName,
-                        content: getDefaultCode(state.currentLanguage),
-                        language: state.currentLanguage
-                    };
-                    
-                    // Add to file tree
-                    updateFileTree();
-                }
-                
-                // Switch to the new file
-                switchFile(newFileName);
-            }
+            // Hide the original textarea
+            textarea.style.display = 'none';
+        }
 
-            function handleProjectNameChange() {
-                state.projectName = projectNameInput.value || 'Untitled Project';
-            }
+        // Initialize editor with default language (Python)
+        initializeEditor('python');
 
-            function handleEditorChange() {
-                state.files[state.currentFile].content = editor.value;
-            }
+        // Update editor mode when language changes
+        languageSelect.addEventListener('change', () => {
+            initializeEditor(languageSelect.value);
+        });
 
-            function switchFile(fileName) {
-                if (!state.files[fileName]) return;
-                
-                state.currentFile = fileName;
-                const file = state.files[fileName];
-                
-                // Update editor
-                editor.value = file.content;
-                currentFileElement.textContent = fileName;
-                
-                // Update language selection if needed
-                if (file.language !== state.currentLanguage && file.language !== 'text') {
-                    state.currentLanguage = file.language;
-                    languageSelect.value = file.language;
-                }
-                
-                // Update UI selection
-                document.querySelectorAll('.file-item').forEach(item => {
-                    item.classList.remove('bg-gray-700');
-                    if (item.dataset.file === fileName) {
-                        item.classList.add('bg-gray-700');
-                    }
-                });
-            }
+        // Sync editor content with textarea on form submission
+        const form = document.getElementById('code-form');
+        form.addEventListener('submit', (e) => {
+            textarea.value = editor.state.doc.toString();
+        });
 
-            function addNewFile() {
-                const fileName = prompt('Enter file name:');
-                if (fileName) {
-                    const extension = fileName.split('.').pop();
-                    let language = 'text';
-                    
-                    // Determine language from extension
-                    language = getLanguageFromExtension(fileName);
-                    
-                    state.files[fileName] = {
-                        name: fileName,
-                        content: getDefaultCode(language),
-                        language: language
-                    };
-                    
-                    // Update file tree
-                    if (isDependencyFile(fileName)) {
-                        updateDependencyFiles();
-                    } else {
-                        updateFileTree();
-                    }
-                    
-                    // Switch to the new file
-                    switchFile(fileName);
-                }
-            }
+        // Example run button functionality (placeholder for actual execution)
+        document.getElementById('run-btn').addEventListener('click', () => {
+            const code = editor.state.doc.toString();
+            const outputDiv = document.getElementById('output');
+            // Placeholder: Simulate output (replace with actual execution logic)
+            outputDiv.textContent = `Running ${languageSelect.value} code...\n${code}`;
+        });
 
-            function deleteFile(fileName) {
-                if (confirm(`Are you sure you want to delete ${fileName}?`)) {
-                    // Don't allow deleting the current file
-                    if (fileName === state.currentFile) {
-                        // Find another file to switch to
-                        const otherFiles = Object.keys(state.files).filter(name => name !== fileName);
-                        if (otherFiles.length > 0) {
-                            switchFile(otherFiles[0]);
-                        } else {
-                            // Create a default file if no files remain
-                            const extension = getExtensionForLanguage(state.currentLanguage);
-                            const newFileName = `main.${extension}`;
-                            state.files[newFileName] = {
-                                name: newFileName,
-                                content: getDefaultCode(state.currentLanguage),
-                                language: state.currentLanguage
-                            };
-                            switchFile(newFileName);
-                        }
-                    }
-                    
-                    // Delete the file
-                    delete state.files[fileName];
-                    
-                    // Update UI
-                    if (isDependencyFile(fileName)) {
-                        updateDependencyFiles();
-                    } else {
-                        updateFileTree();
-                    }
-                }
-            }
+        // Download button functionality
+        document.getElementById('download-btn').addEventListener('click', () => {
+            const code = editor.state.doc.toString();
+            const blob = new Blob([code], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `main.${languageSelect.value === 'python' ? 'py' : languageSelect.value}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
 
-            function updateFileTree() {
-                fileTree.innerHTML = '';
-                
-                Object.keys(state.files).forEach(fileName => {
-                    if (!isDependencyFile(fileName)) {
-                        const fileElement = document.createElement('div');
-                        fileElement.className = 'file-item p-2 rounded cursor-pointer';
-                        fileElement.dataset.file = fileName;
-                        fileElement.innerHTML = `
-                            <span>${fileName}</span>
-                            <span class="delete-btn" data-file="${fileName}">×</span>
-                        `;
-                        
-                        if (fileName === state.currentFile) {
-                            fileElement.classList.add('bg-gray-700');
-                        }
-                        
-                        fileElement.addEventListener('click', (e) => {
-                            if (!e.target.classList.contains('delete-btn')) {
-                                switchFile(fileName);
-                            }
-                        });
-                        
-                        const deleteBtn = fileElement.querySelector('.delete-btn');
-                        deleteBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            deleteFile(fileName);
-                        });
-                        
-                        fileTree.appendChild(fileElement);
-                    }
-                });
-            }
-
-            function updateDependencyFiles() {
-                dependencyFiles.innerHTML = '';
-                
-                Object.keys(state.files).forEach(fileName => {
-                    if (isDependencyFile(fileName)) {
-                        const fileElement = document.createElement('div');
-                        fileElement.className = 'file-item p-2 rounded cursor-pointer';
-                        fileElement.dataset.file = fileName;
-                        fileElement.innerHTML = `
-                            <span>${fileName}</span>
-                            <span class="delete-btn" data-file="${fileName}">×</span>
-                        `;
-                        
-                        if (fileName === state.currentFile) {
-                            fileElement.classList.add('bg-gray-700');
-                        }
-                        
-                        fileElement.addEventListener('click', (e) => {
-                            if (!e.target.classList.contains('delete-btn')) {
-                                switchFile(fileName);
-                            }
-                        });
-                        
-                        const deleteBtn = fileElement.querySelector('.delete-btn');
-                        deleteBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            deleteFile(fileName);
-                        });
-                        
-                        dependencyFiles.appendChild(fileElement);
-                    }
-                });
-            }
-
-            function handleFileUpload(event) {
-                const files = event.target.files;
-                
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    const reader = new FileReader();
-                    
-                    reader.onload = function(e) {
-                        const content = e.target.result;
-                        state.files[file.name] = {
-                            name: file.name,
-                            content: content,
-                            language: getLanguageFromExtension(file.name)
-                        };
-                        
-                        // Update file tree
-                        if (isDependencyFile(file.name)) {
-                            updateDependencyFiles();
-                        } else {
-                            updateFileTree();
-                        }
-                    };
-                    
-                    reader.readAsText(file);
-                }
-                
-                // Reset the file input
-                event.target.value = '';
-            }
-
-            function runCode() {
-                statusElement.textContent = 'Running...';
-                runSpinner.classList.remove('hidden');
-                runText.textContent = 'Running';
-                outputContent.textContent = '';
-                
-                try {
-                    const code = editor.value;
-                    const language = state.currentLanguage;
-                    
-                    // Clear HTML output if it exists
-                    htmlOutputFrame.srcdoc = '';
-                    
-                    // Execute based on language
-                    switch(language) {
-                        case 'python':
-                            runPythonCode(code);
-                            break;
-                        case 'javascript':
-                            runJavaScriptCode(code);
-                            break;
-                        case 'html':
-                            runHTMLCode(code);
-                            break;
-                        case 'css':
-                            runCSSCode(code);
-                            break;
-                        case 'cpp':
-                            runCppCode(code);
-                            break;
-                        case 'java':
-                            runJavaCode(code);
-                            break;
-                        case 'php':
-                            runPHPCode(code);
-                            break;
-                        case 'ruby':
-                            runRubyCode(code);
-                            break;
-                        case 'go':
-                            runGoCode(code);
-                            break;
-                        case 'rust':
-                            runRustCode(code);
-                            break;
-                        case 'sql':
-                            runSQLCode(code);
-                            break;
-                        case 'swift':
-                            runSwiftCode(code);
-                            break;
-                        case 'typescript':
-                            runTypeScriptCode(code);
-                            break;
-                        default:
-                            outputContent.textContent = `Unsupported language: ${language}`;
-                    }
-                    
-                    statusElement.textContent = 'Execution completed';
-                } catch (error) {
-                    outputContent.textContent = `Error: ${error.message}`;
-                    statusElement.textContent = 'Error';
-                } finally {
-                    runSpinner.classList.add('hidden');
-                    runText.textContent = 'Run';
-                    
-                    // Switch to output tab
-                    tabButtons.forEach(btn => {
-                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
-                        btn.classList.add('text-gray-400');
+        // Upload button functionality
+        document.getElementById('upload-btn').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    editor.dispatch({
+                        changes: { from: 0, to: editor.state.doc.length, insert: event.target.result }
                     });
-                    document.querySelector('[data-tab="output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
-                    outputContent.classList.remove('hidden');
-                    htmlOutputContent.classList.add('hidden');
-                }
-            }
-
-            function runPythonCode(code) {
-                try {
-                    // Simple Python execution simulation
-                    // In a real implementation, this would use Pyodide
-                    
-                    // Check for print statements and simulate output
-                    const printRegex = /print\(([^)]+)\)/g;
-                    let match;
-                    let output = '';
-                    
-                    while ((match = printRegex.exec(code)) !== null) {
-                        // Remove quotes from string output
-                        let value = match[1].replace(/['"]/g, '');
-                        output += value + '\n';
-                    }
-                    
-                    if (output) {
-                        outputContent.textContent = output;
-                    } else {
-                        outputContent.textContent = 'Python code executed successfully (no output)';
-                    }
-                } catch (error) {
-                    outputContent.textContent = `Python error: ${error.message}`;
-                }
-            }
-
-            function runJavaScriptCode(code) {
-                try {
-                    // Capture console.log output
-                    const originalConsoleLog = console.log;
-                    const logs = [];
-                    console.log = function() {
-                        logs.push(Array.from(arguments).join(' '));
-                        originalConsoleLog.apply(console, arguments);
-                    };
-                    
-                    // Execute the JavaScript code
-                    eval(code);
-                    
-                    // Restore console.log
-                    console.log = originalConsoleLog;
-                    
-                    // Display captured logs
-                    if (logs.length > 0) {
-                        outputContent.textContent = logs.join('\n');
-                    } else {
-                        outputContent.textContent = 'JavaScript code executed successfully (no output)';
-                    }
-                } catch (error) {
-                    outputContent.textContent = `JavaScript error: ${error.message}`;
-                }
-            }
-
-            function runHTMLCode(code) {
-                try {
-                    // Show HTML output in the iframe
-                    htmlOutputFrame.srcdoc = code;
-                    
-                    // Switch to HTML output tab
-                    tabButtons.forEach(btn => {
-                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
-                        btn.classList.add('text-gray-400');
-                    });
-                    document.querySelector('[data-tab="html-output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
-                    outputContent.classList.add('hidden');
-                    htmlOutputContent.classList.remove('hidden');
-                    
-                    outputContent.textContent = 'HTML rendered successfully. View output in HTML tab.';
-                } catch (error) {
-                    outputContent.textContent = `HTML error: ${error.message}`;
-                }
-            }
-
-            function runCSSCode(code) {
-                try {
-                    // Create a style element and add it to the HTML output
-                    const htmlWithCSS = `<style>${code}</style><div class="css-output"><h1>CSS Output Preview</h1><p>This is a preview of your CSS styles.</p><button class="btn">Styled Button</button></div>`;
-                    htmlOutputFrame.srcdoc = htmlWithCSS;
-                    
-                    // Switch to HTML output tab
-                    tabButtons.forEach(btn => {
-                        btn.classList.remove('border-b-2', 'border-blue-500', 'text-blue-300');
-                        btn.classList.add('text-gray-400');
-                    });
-                    document.querySelector('[data-tab="html-output"]').classList.add('border-b-2', 'border-blue-500', 'text-blue-300');
-                    outputContent.classList.add('hidden');
-                    htmlOutputContent.classList.remove('hidden');
-                    
-                    outputContent.textContent = 'CSS styles applied. View output in HTML tab.';
-                } catch (error) {
-                    outputContent.textContent = `CSS error: ${error.message}`;
-                }
-            }
-
-            function runCppCode(code) {
-                outputContent.textContent = "C++ code would be compiled and executed here.\n\nIn a full implementation, this would use Emscripten to compile C++ to WebAssembly.\n\nYour code:\n\n" + code;
-            }
-
-            function runJavaCode(code) {
-                outputContent.textContent = "Java code would be compiled and executed here.\n\nIn a full implementation, this would use CheerpJ or similar technology to run Java in the browser.\n\nYour code:\n\n" + code;
-            }
-
-            function runPHPCode(code) {
-                outputContent.textContent = "PHP code would be executed here.\n\nIn a full implementation, this would require a PHP interpreter or server-side processing.\n\nYour code:\n\n" + code;
-            }
-
-            function runRubyCode(code) {
-                outputContent.textContent = "Ruby code would be executed here.\n\nIn a full implementation, this would use Opal or similar Ruby-to-JS transpiler.\n\nYour code:\n\n" + code;
-            }
-
-            function runGoCode(code) {
-                outputContent.textContent = "Go code would be compiled and executed here.\n\nIn a full implementation, this would use GopherJS or WebAssembly target.\n\nYour code:\n\n" + code;
-            }
-
-            function runRustCode(code) {
-                outputContent.textContent = "Rust code would be compiled and executed here.\n\nIn a full implementation, this would compile Rust to WebAssembly.\n\nYour code:\n\n" + code;
-            }
-
-            function runSQLCode(code) {
-                outputContent.textContent = "SQL queries would be executed here.\n\nIn a full implementation, this would connect to a database or use a SQL.js.\n\nYour code:\n\n" + code;
-            }
-
-            function runSwiftCode(code) {
-                outputContent.textContent = "Swift code would be compiled and executed here.\n\nIn a full implementation, this would use WebAssembly target for Swift.\n\nYour code:\n\n" + code;
-            }
-
-            function runTypeScriptCode(code) {
-                try {
-                    // Simple TypeScript execution simulation
-                    // In a real implementation, this would use the TypeScript compiler
-                    
-                    // Capture console.log output
-                    const originalConsoleLog = console.log;
-                    const logs = [];
-                    console.log = function() {
-                        logs.push(Array.from(arguments).join(' '));
-                        originalConsoleLog.apply(console, arguments);
-                    };
-                    
-                    // Execute the TypeScript code (as JavaScript since we can't compile TS in browser easily)
-                    eval(code.replace(/:\s*[^;]+;/g, ';')); // Simple type stripping
-                    
-                    // Restore console.log
-                    console.log = originalConsoleLog;
-                    
-                    // Display captured logs
-                    if (logs.length > 0) {
-                        outputContent.textContent = logs.join('\n');
-                    } else {
-                        outputContent.textContent = 'TypeScript code executed successfully (no output)';
-                    }
-                } catch (error) {
-                    outputContent.textContent = `TypeScript error: ${error.message}`;
-                }
-            }
-
-            function saveProject() {
-                try {
-                    localStorage.setItem('codeRunner_project', JSON.stringify(state));
-                    statusElement.textContent = 'Project saved successfully';
-                    
-                    setTimeout(() => {
-                        statusElement.textContent = 'Idle';
-                    }, 2000);
-                } catch (error) {
-                    statusElement.textContent = 'Error saving project';
-                }
-            }
-
-            function downloadProject() {
-                try {
-                    const data = JSON.stringify(state, null, 2);
-                    const blob = new Blob([data], {type: 'application/json'});
-                    const url = URL.createObjectURL(blob);
-                    
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${state.projectName}.coderunner`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    
-                    statusElement.textContent = 'Project downloaded';
-                    
-                    setTimeout(() => {
-                        statusElement.textContent = 'Idle';
-                    }, 2000);
-                } catch (error) {
-                    statusElement.textContent = 'Error downloading project';
-                }
-            }
-
-            // Helper functions
-            function getExtensionForLanguage(language) {
-                switch(language) {
-                    case 'python': return 'py';
-                    case 'javascript': return 'js';
-                    case 'html': return 'html';
-                    case 'css': return 'css';
-                    case 'cpp': return 'cpp';
-                    case 'java': return 'java';
-                    case 'php': return 'php';
-                    case 'ruby': return 'rb';
-                    case 'go': return 'go';
-                    case 'rust': return 'rs';
-                    case 'sql': return 'sql';
-                    case 'swift': return 'swift';
-                    case 'typescript': return 'ts';
-                    default: return 'txt';
-                }
-            }
-
-            function getDefaultCode(language) {
-                switch(language) {
-                    case 'python':
-                        return '# Write your Python code here\nprint("Hello, World!")';
-                    case 'javascript':
-                        return '// Write your JavaScript code here\nconsole.log("Hello, World!");';
-                    case 'html':
-                        return '<!DOCTYPE html>\n<html>\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello, World!</h1>\n</body>\n</html>';
-                    case 'css':
-                        return '/* Write your CSS code here */\nbody {\n    font-family: Arial, sans-serif;\n    background-color: #f0f0f0;\n    color: #333;\n}\n\nh1 {\n    color: #0066cc;\n}\n\n.btn {\n    background-color: #0066cc;\n    color: white;\n    padding: 10px 20px;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}';
-                    case 'cpp':
-                        return '#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}';
-                    case 'java':
-                        return 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}';
-                    case 'php':
-                        return '<?php\n// Write your PHP code here\necho "Hello, World!";\n?>';
-                    case 'ruby':
-                        return '# Write your Ruby code here\nputs "Hello, World!"';
-                    case 'go':
-                        return 'package main\n\nimport "fmt"\n\nfunc main() {\n    fmt.Println("Hello, World!")\n}';
-                    case 'rust':
-                        return 'fn main() {\n    println!("Hello, World!");\n}';
-                    case 'sql':
-                        return '-- Write your SQL queries here\nSELECT * FROM users WHERE active = 1;';
-                    case 'swift':
-                        return '// Write your Swift code here\nprint("Hello, World!")';
-                    case 'typescript':
-                        return '// Write your TypeScript code here\nconst message: string = "Hello, World!";\nconsole.log(message);';
-                    default:
-                        return '';
-                }
-            }
-
-            function getLanguageFromExtension(filename) {
-                const extension = filename.split('.').pop().toLowerCase();
-                switch(extension) {
-                    case 'py': return 'python';
-                    case 'js': return 'javascript';
-                    case 'html': return 'html';
-                    case 'css': return 'css';
-                    case 'cpp': case 'cc': case 'cxx': case 'h': case 'hpp': return 'cpp';
-                    case 'java': return 'java';
-                    case 'php': return 'php';
-                    case 'rb': return 'ruby';
-                    case 'go': return 'go';
-                    case 'rs': return 'rust';
-                    case 'sql': return 'sql';
-                    case 'swift': return 'swift';
-                    case 'ts': return 'typescript';
-                    case 'txt': return 'text';
-                    case 'json': return 'text';
-                    default: return 'text';
-                }
-            }
-
-            function isDependencyFile(fileName) {
-                const dependencyFiles = [
-                    'requirements.txt', 'package.json', 'composer.json', 'gemfile', 'go.mod', 
-                    'cargo.toml', 'pom.xml', 'build.gradle'
-                ];
-                return dependencyFiles.includes(fileName.toLowerCase());
-            }
-
-            // Load saved project if available
-            const savedProject = localStorage.getItem('codeRunner_project');
-            if (savedProject) {
-                try {
-                    const parsedProject = JSON.parse(savedProject);
-                    Object.assign(state, parsedProject);
-                    
-                    // Update UI with saved project
-                    projectNameInput.value = state.projectName;
-                    languageSelect.value = state.currentLanguage;
-                    
-                    // Switch to the current file
-                    if (state.files[state.currentFile]) {
-                        switchFile(state.currentFile);
-                    }
-                    
-                    // Update file trees
-                    updateFileTree();
-                    updateDependencyFiles();
-                } catch (error) {
-                    console.error('Error loading saved project:', error);
-                }
+                    textarea.value = event.target.result;
+                };
+                reader.readAsText(file);
             }
         });
     </script>
