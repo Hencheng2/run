@@ -69,16 +69,11 @@
     <div class="bg-gray-900 w-64 overflow-y-auto p-4">
       <div class="flex justify-between items-center mb-4">
         <h2 class="font-semibold">Files</h2>
-        <!-- small note: new file moved to header for convenience -->
       </div>
-      <div id="file-tree" class="mb-4">
-        <!-- Files will be dynamically added here -->
-      </div>
+      <div id="file-tree" class="mb-4"></div>
       <div class="mt-2">
         <h3 class="font-semibold mb-2">Dependency Files</h3>
-        <div id="dependency-files">
-          <!-- Dependency files will be dynamically added here -->
-        </div>
+        <div id="dependency-files"></div>
       </div>
     </div>
 
@@ -115,609 +110,156 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs/loader.min.js"></script>
 
   <script>
-    // === Language map: template, filename and dependency stubs ===
-    const languageMap = {
-      python: { lang: "python", file: "main.py", template: '# Write your Python code here\nprint("Hello, World!")', deps: { "requirements.txt": "# Add your Python dependencies here\n" } },
-      javascript: { lang: "javascript", file: "main.js", template: '// Write your JavaScript code here\nconsole.log("Hello, World!");', deps: { "package.json": '{\n  "name": "project",\n  "dependencies": {}\n}' } },
-      typescript: { lang: "typescript", file: "main.ts", template: '// Write your TypeScript code here\nconst message: string = "Hello, World!";\nconsole.log(message);', deps: { "package.json": '{\n  "name": "project",\n  "dependencies": {}\n}' } },
-      html: { lang: "html", file: "index.html", template: '<!DOCTYPE html>\n<html>\n<head>\n  <meta charset="utf-8" />\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />\n  <title>Hello World</title>\n</head>\n<body>\n  <h1>Hello, World!</h1>\n</body>\n</html>' },
-      css: { lang: "css", file: "style.css", template: '/* Write your CSS here */\nbody{ font-family:Arial, sans-serif; background:#f0f0f0; color:#333 }' },
-      cpp: { lang: "cpp", file: "main.cpp", template: '#include <iostream>\nint main(){ std::cout << "Hello, World!\\n"; return 0; }' },
-      java: { lang: "java", file: "Main.java", template: 'public class Main { public static void main(String[] args) { System.out.println("Hello, World!"); } }', deps: { "pom.xml": '<project>\n  <modelVersion>4.0.0</modelVersion>\n</project>' } },
-      php: { lang: "php", file: "index.php", template: '<?php\necho "Hello, World!";\n?>' },
-      ruby: { lang: "ruby", file: "main.rb", template: 'puts "Hello, World!"' },
-      go: { lang: "go", file: "main.go", template: 'package main\nimport "fmt"\nfunc main(){ fmt.Println("Hello, World!") }' },
-      rust: { lang: "rust", file: "main.rs", template: 'fn main(){ println!("Hello, World!"); }' },
-      sql: { lang: "sql", file: "query.sql", template: 'SELECT "Hello, World!" AS greeting;' },
-      swift: { lang: "swift", file: "main.swift", template: 'print("Hello, World!")' }
+    // --- RapidAPI Judge0 Setup ---
+    const JUDGE0_API_URL = "https://judge0-ce.p.rapidapi.com/submissions";
+    const RAPIDAPI_KEY = "YOUR_RAPIDAPI_KEY_HERE"; // 🔑 Replace with your RapidAPI Key
+
+    const judge0LangMap = {
+      python: 71,
+      javascript: 63,
+      cpp: 54,
+      java: 62,
+      php: 68,
+      ruby: 72,
+      go: 60,
+      rust: 73,
+      sql: 82,
+      swift: 83,
+      typescript: 74
     };
 
-    // Dependency filenames list used by 'isDependencyFile'
-    const dependencyFileList = ['requirements.txt','package.json','composer.json','gemfile','go.mod','cargo.toml','pom.xml','build.gradle'];
-
-    // === Default state ===
-    const defaultState = {
-      currentLanguage: 'python',
-      currentFile: 'main.py',
-      projectName: 'Untitled Project',
+    // --- State ---
+    const state = {
       files: {
-        'main.py': { name: 'main.py', content: languageMap.python.template, language: 'python' },
-        'requirements.txt': { name: 'requirements.txt', content: languageMap.python.deps['requirements.txt'], language: 'text' }
-      }
+        "main.py": { content: "print('Hello, World!')", language: "python" }
+      },
+      currentFile: "main.py",
+      currentLanguage: "python"
     };
 
-    // Global state variable
-    let state = JSON.parse(JSON.stringify(defaultState));
-    let monacoEditor = null;
+    let monacoEditor;
 
-    // Utility: determine language from file extension (fallback)
-    function getLanguageFromExtension(filename) {
-      const ext = filename.split('.').pop().toLowerCase();
-      switch(ext) {
-        case 'py': return 'python';
-        case 'js': return 'javascript';
-        case 'html': return 'html';
-        case 'css': return 'css';
-        case 'cpp': case 'cc': case 'cxx': case 'hpp': return 'cpp';
-        case 'java': return 'java';
-        case 'php': return 'php';
-        case 'rb': return 'ruby';
-        case 'go': return 'go';
-        case 'rs': return 'rust';
-        case 'sql': return 'sql';
-        case 'swift': return 'swift';
-        case 'ts': return 'typescript';
-        case 'json': return 'text';
-        case 'txt': return 'text';
-        default: return 'text';
-      }
-    }
-
-    function isDependencyFile(name) {
-      return dependencyFileList.includes(name.toLowerCase());
-    }
-
-    // === Load saved project or default ===
-    function loadSavedProjectOrDefault() {
-      const raw = localStorage.getItem('codeRunner_project');
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          // Merge/validate parsed with defaults
-          if (!parsed.files) parsed.files = defaultState.files;
-          if (!parsed.currentFile) parsed.currentFile = Object.keys(parsed.files)[0] || defaultState.currentFile;
-          if (!parsed.currentLanguage) parsed.currentLanguage = getLanguageFromExtension(parsed.currentFile) || defaultState.currentLanguage;
-          state = parsed;
-          return;
-        } catch (e) {
-          console.warn('Failed parsing saved project, using defaults', e);
-        }
-      }
-      // fallback default
-      state = JSON.parse(JSON.stringify(defaultState));
-    }
-
-    // === Monaco loader and app init ===
-    document.addEventListener('DOMContentLoaded', function() {
-      // setup tab switching UI first
-      const tabButtons = document.querySelectorAll('.tab-btn');
-      const outputContent = document.getElementById('output-content');
-      const htmlOutputContent = document.getElementById('html-output-content');
-      tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-          const tab = button.dataset.tab;
-          tabButtons.forEach(btn => {
-            btn.classList.remove('border-b-2','border-blue-500','text-blue-300');
-            btn.classList.add('text-gray-400');
-          });
-          button.classList.add('border-b-2','border-blue-500','text-blue-300');
-          button.classList.remove('text-gray-400');
-          if (tab === 'output') {
-            outputContent.classList.remove('hidden');
-            htmlOutputContent.classList.add('hidden');
-          } else {
-            outputContent.classList.add('hidden');
-            htmlOutputContent.classList.remove('hidden');
-          }
-        });
-      });
-
-      // Load saved project state or default
-      loadSavedProjectOrDefault();
-
-      // configure require for Monaco
-      require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs' }});
-      require(['vs/editor/editor.main'], function() {
-        // create editor
-        const initialFile = state.currentFile in state.files ? state.currentFile : Object.keys(state.files)[0];
-        const initialContent = (state.files && state.files[initialFile]) ? state.files[initialFile].content : '';
-        const initLang = languageMap[state.currentLanguage] ? languageMap[state.currentLanguage].lang : getLanguageFromExtension(initialFile);
-
-        monacoEditor = monaco.editor.create(document.getElementById('editor'), {
-          value: initialContent,
-          language: initLang,
-          theme: 'vs-dark',
-          automaticLayout: true,
-          fontSize: 14,
-          minimap: { enabled: false }
-        });
-
-        // ensure UI is set to the saved state values
-        document.getElementById('project-name').value = state.projectName || 'Untitled Project';
-        document.getElementById('language-select').value = state.currentLanguage || 'python';
-        document.getElementById('current-file').textContent = state.currentFile;
-        document.getElementById('file-language').textContent = state.files[state.currentFile] ? state.files[state.currentFile].language : getLanguageFromExtension(state.currentFile);
-
-        // render file lists
-        updateFileTree();
-        updateDependencyFiles();
-
-        // wire editor change to state (auto-sync)
-        monacoEditor.onDidChangeModelContent(() => {
-          if (!state.currentFile) return;
-          state.files[state.currentFile].content = monacoEditor.getValue();
-        });
-
-        // Setup buttons & listeners now that editor exists
-        setupUIListeners();
+    // --- Monaco Init ---
+    require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs" } });
+    require(["vs/editor/editor.main"], function () {
+      monacoEditor = monaco.editor.create(document.getElementById("editor"), {
+        value: state.files[state.currentFile].content,
+        language: state.files[state.currentFile].language,
+        theme: "vs-dark",
+        automaticLayout: true,
+        minimap: { enabled: false }
       });
     });
 
-    // === UI listeners wiring ===
-    function setupUIListeners() {
-      // elements
-      const languageSelect = document.getElementById('language-select');
-      const projectNameInput = document.getElementById('project-name');
-      const runButton = document.getElementById('run-btn');
-      const runText = document.getElementById('run-text');
-      const runSpinner = document.getElementById('run-spinner');
-      const saveButton = document.getElementById('save-btn');
-      const downloadButton = document.getElementById('download-btn');
-      const uploadFileInput = document.getElementById('upload-file');
-      const newFileBtn = document.getElementById('new-file-btn');
-      const newProjectBtn = document.getElementById('new-project-btn');
-      const refreshBtn = document.getElementById('refresh-btn');
-
-      languageSelect.addEventListener('change', handleLanguageChange);
-      projectNameInput.addEventListener('change', handleProjectNameChange);
-      runButton.addEventListener('click', () => { runText.textContent = 'Running'; runSpinner.classList.remove('hidden'); runCode(); });
-      saveButton.addEventListener('click', saveProject);
-      downloadButton.addEventListener('click', downloadProject);
-      uploadFileInput.addEventListener('change', handleFileUpload);
-      newFileBtn.addEventListener('click', addNewFile);
-      newProjectBtn.addEventListener('click', newProject);
-      refreshBtn.addEventListener('click', () => {
-        const outputContent = document.getElementById('output-content');
-        outputContent.textContent = '';
-        document.getElementById('status').textContent = 'Console cleared';
-        setTimeout(()=> document.getElementById('status').textContent = 'Idle', 1200);
-      });
-
-      // save on unload to avoid accidental loss
-      window.addEventListener('beforeunload', () => {
-        try { if (state && state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
-        localStorage.setItem('codeRunner_project', JSON.stringify(state));
-      });
-    }
-
-    // === File tree rendering & switching ===
-    function updateFileTree() {
-      const fileTree = document.getElementById('file-tree');
-      fileTree.innerHTML = '';
+    // --- Render File Tree ---
+    function renderFileTree() {
+      const fileTree = document.getElementById("file-tree");
+      fileTree.innerHTML = "";
       Object.keys(state.files).forEach(fileName => {
-        if (!isDependencyFile(fileName)) {
-          const fileElement = document.createElement('div');
-          fileElement.className = 'file-item cursor-pointer';
-          if (fileName === state.currentFile) fileElement.classList.add('active-file');
-          fileElement.dataset.file = fileName;
-          fileElement.innerHTML = `<span>${fileName}</span><span class="delete-btn" data-file="${fileName}">×</span>`;
-          fileElement.addEventListener('click', (e) => {
-            if (!e.target.classList.contains('delete-btn')) {
-              switchFile(fileName);
-            }
-          });
-          const deleteBtn = fileElement.querySelector('.delete-btn');
-          deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteFile(fileName);
-          });
-          fileTree.appendChild(fileElement);
-        }
+        const div = document.createElement("div");
+        div.className = "file-item cursor-pointer" + (state.currentFile === fileName ? " active-file" : "");
+        div.textContent = fileName;
+        div.onclick = () => switchFile(fileName);
+        fileTree.appendChild(div);
       });
     }
 
-    function updateDependencyFiles() {
-      const dependencyFiles = document.getElementById('dependency-files');
-      dependencyFiles.innerHTML = '';
-      Object.keys(state.files).forEach(fileName => {
-        if (isDependencyFile(fileName)) {
-          const fileElement = document.createElement('div');
-          fileElement.className = 'file-item cursor-pointer';
-          if (fileName === state.currentFile) fileElement.classList.add('active-file');
-          fileElement.dataset.file = fileName;
-          fileElement.innerHTML = `<span>${fileName}</span><span class="delete-btn" data-file="${fileName}">×</span>`;
-          fileElement.addEventListener('click', (e) => {
-            if (!e.target.classList.contains('delete-btn')) {
-              switchFile(fileName);
-            }
-          });
-          const deleteBtn = fileElement.querySelector('.delete-btn');
-          deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteFile(fileName);
-          });
-          dependencyFiles.appendChild(fileElement);
-        }
-      });
-    }
-
+    // --- Switch File ---
     function switchFile(fileName) {
-      if (!fileName || !(fileName in state.files)) return;
-      // save current file content into state before switching
-      try { if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
+      if (state.currentFile && monacoEditor) {
+        state.files[state.currentFile].content = monacoEditor.getValue();
+      }
       state.currentFile = fileName;
-      const file = state.files[fileName];
-
-      // update editor content and language
-      if (monacoEditor) {
-        monacoEditor.setValue(file.content || '');
-        const lang = file.language && languageMap[file.language] ? languageMap[file.language].lang : getMonacoLanguageForFile(fileName);
-        try { monaco.editor.setModelLanguage(monacoEditor.getModel(), lang); } catch(e) {}
-      }
-
-      // update UI labels & highlights
-      document.getElementById('current-file').textContent = fileName;
-      document.getElementById('file-language').textContent = file.language || getLanguageFromExtension(fileName);
-      updateFileTree();
-      updateDependencyFiles();
+      state.currentLanguage = state.files[fileName].language;
+      document.getElementById("current-file").textContent = fileName;
+      document.getElementById("file-language").textContent = state.currentLanguage;
+      monaco.editor.setModelLanguage(monacoEditor.getModel(), state.currentLanguage);
+      monacoEditor.setValue(state.files[fileName].content);
+      document.getElementById("language-select").value = state.currentLanguage;
+      renderFileTree();
     }
 
-    // Try to return Monaco's language id based on file extension or mapping
-    function getMonacoLanguageForFile(fileName) {
-      const ext = fileName.split('.').pop().toLowerCase();
-      switch(ext) {
-        case 'py': return 'python';
-        case 'js': return 'javascript';
-        case 'ts': return 'typescript';
-        case 'html': return 'html';
-        case 'css': return 'css';
-        case 'cpp': case 'cc': return 'cpp';
-        case 'java': return 'java';
-        case 'php': return 'php';
-        case 'rb': return 'ruby';
-        case 'go': return 'go';
-        case 'rs': return 'rust';
-        case 'sql': return 'sql';
-        case 'swift': return 'swift';
-        case 'json': return 'json';
-        default: return 'plaintext';
-      }
-    }
-
-    // === Add / Delete file operations ===
-    function addNewFile() {
-      const fileName = prompt('Enter file name (include extension):');
-      if (!fileName) return;
-      if (state.files[fileName]) {
-        alert('A file with that name already exists.');
-        return;
-      }
-      const lang = getLanguageFromExtension(fileName);
-      const template = languageMap[lang] ? languageMap[lang].template : '';
-      state.files[fileName] = { name: fileName, content: template, language: lang === 'text' ? 'text' : lang };
-      // If this is a dependency file, refresh dependency view else file tree
-      if (isDependencyFile(fileName)) updateDependencyFiles(); else updateFileTree();
-      switchFile(fileName);
-    }
-
-    function deleteFile(fileName) {
-      if (!fileName || !state.files[fileName]) return;
-      if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
-
-      // prevent deleting everything: ensure at least one code file remains
-      delete state.files[fileName];
-
-      // if deleted file was current file pick another
-      const remaining = Object.keys(state.files);
-      if (remaining.length === 0) {
-        // restore defaults
-        state = JSON.parse(JSON.stringify(defaultState));
-      }
-      state.currentFile = remaining[0] || Object.keys(state.files)[0];
-      // apply switch
-      switchFile(state.currentFile);
-      // re-render lists
-      updateFileTree();
-      updateDependencyFiles();
-      saveProject(); // persist the change
-    }
-
-    // === File upload ===
-    function handleFileUpload(event) {
-      const files = event.target.files;
-      if (!files || files.length === 0) return;
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target.result;
-          const name = file.name;
-          const lang = getLanguageFromExtension(name);
-          state.files[name] = { name, content, language: lang === 'text' ? 'text' : lang };
-          // update trees
-          updateFileTree();
-          updateDependencyFiles();
-        };
-        reader.readAsText(file);
-      });
-      // reset input so same file can be uploaded later
-      event.target.value = '';
-      saveProject();
-    }
-
-    // === Language change (from dropdown) ===
-    function handleLanguageChange(e) {
-      const newLang = e.target.value;
-      state.currentLanguage = newLang;
-
-      // decide default main file for this language
-      const langDef = languageMap[newLang];
-      const mainFile = langDef ? langDef.file : `main.${getExtensionForLanguage(newLang)}`;
-      // create main file if missing
-      if (!state.files[mainFile]) {
-        const mainContent = (langDef && langDef.template) ? langDef.template : '';
-        state.files[mainFile] = { name: mainFile, content: mainContent, language: newLang };
-      }
-
-      // create dependency files if provided
-      if (langDef && langDef.deps) {
-        Object.entries(langDef.deps).forEach(([depName, depContent]) => {
-          if (!state.files[depName]) state.files[depName] = { name: depName, content: depContent, language: 'text' };
-        });
-      }
-
-      // switch to main file for that language
-      switchFile(mainFile);
-      // update UI language select (already changed by user)
-      document.getElementById('language-select').value = newLang;
-      saveProject();
-    }
-
-    function handleProjectNameChange(e) {
-      state.projectName = e.target.value || 'Untitled Project';
-      saveProject();
-    }
-
-    // === Run / execution simulation (mirrors your previous behaviors) ===
-    function runCode() {
+    // --- Run Code ---
+    async function runCode() {
       try {
-        // ensure content is up to date
-        if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue();
-
-        const outputContent = document.getElementById('output-content');
-        const htmlOutputFrame = document.getElementById('html-output-frame');
-        outputContent.textContent = '';
-        htmlOutputFrame.srcdoc = '';
-
-        // pick execution language: prefer state.currentLanguage, else derive from current file
-        const language = state.currentLanguage || state.files[state.currentFile].language || getLanguageFromExtension(state.currentFile);
-        const code = state.files[state.currentFile].content || '';
-
-        switch(language) {
-          case 'python': runPythonCode(code); break;
-          case 'javascript': runJavaScriptCode(code); break;
-          case 'html': runHTMLCode(code); break;
-          case 'css': runCSSCode(code); break;
-          case 'cpp': runCppCode(code); break;
-          case 'java': runJavaCode(code); break;
-          case 'php': runPHPCode(code); break;
-          case 'ruby': runRubyCode(code); break;
-          case 'go': runGoCode(code); break;
-          case 'rust': runRustCode(code); break;
-          case 'sql': runSQLCode(code); break;
-          case 'swift': runSwiftCode(code); break;
-          case 'typescript': runTypeScriptCode(code); break;
-          default:
-            outputContent.textContent = `Unsupported language: ${language}`;
+        if (state.currentFile && monacoEditor) {
+          state.files[state.currentFile].content = monacoEditor.getValue();
         }
-        document.getElementById('status').textContent = 'Execution completed';
+
+        const outputContent = document.getElementById("output-content");
+        const htmlOutputFrame = document.getElementById("html-output-frame");
+        outputContent.textContent = "";
+        htmlOutputFrame.srcdoc = "";
+
+        const language = state.currentLanguage;
+        const code = state.files[state.currentFile].content || "";
+
+        if (language === "html") {
+          htmlOutputFrame.srcdoc = code;
+        } else if (language === "css") {
+          htmlOutputFrame.srcdoc = `<style>${code}</style>`;
+        } else if (language in judge0LangMap) {
+          await runJudge0Code(code, language);
+        } else {
+          outputContent.textContent = `Execution not supported for ${language}`;
+        }
+
+        document.getElementById("status").textContent = "Execution completed";
       } catch (err) {
-        document.getElementById('output-content').textContent = `Error: ${err.message || err}`;
-        document.getElementById('status').textContent = 'Error';
+        document.getElementById("output-content").textContent = `Error: ${err.message}`;
+        document.getElementById("status").textContent = "Error";
       } finally {
-        document.getElementById('run-spinner').classList.add('hidden');
-        document.getElementById('run-text').textContent = 'Run';
-        // switch to console tab
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
-        const outbtn = document.querySelector('[data-tab="output"]');
-        if (outbtn) outbtn.classList.add('border-b-2','border-blue-500','text-blue-300');
-        document.getElementById('output-content').classList.remove('hidden');
-        document.getElementById('html-output-content').classList.add('hidden');
+        document.getElementById("run-spinner").classList.add("hidden");
+        document.getElementById("run-text").textContent = "Run";
       }
     }
 
-    // Simplified/simulated run functions (mirrors your original quick implementations)
-    function runPythonCode(code) {
+    async function runJudge0Code(code, language) {
+      const outputContent = document.getElementById("output-content");
       try {
-        const printRegex = /print\(([^)]+)\)/g;
-        let match, output = '';
-        while ((match = printRegex.exec(code)) !== null) {
-          let value = match[1].replace(/(^['"]|['"]$)/g,''); // strip quotes
-          output += value + '\n';
-        }
-        const out = output || 'Python code executed successfully (no output)';
-        document.getElementById('output-content').textContent = out;
+        const response = await fetch(`${JUDGE0_API_URL}?base64_encoded=false&wait=true`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-RapidAPI-Key": RAPIDAPI_KEY,
+            "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
+          },
+          body: JSON.stringify({
+            source_code: code,
+            language_id: judge0LangMap[language],
+            stdin: ""
+          })
+        });
+        const result = await response.json();
+        let output = "";
+        if (result.stdout) output += result.stdout;
+        if (result.stderr) output += `\nError:\n${result.stderr}`;
+        if (result.compile_output) output += `\nCompile Error:\n${result.compile_output}`;
+        outputContent.textContent = output || "No output";
       } catch (err) {
-        document.getElementById('output-content').textContent = `Python error: ${err.message || err}`;
+        outputContent.textContent = `Judge0 error: ${err.message}`;
       }
     }
 
-    function runJavaScriptCode(code) {
-      try {
-        const originalConsoleLog = console.log;
-        const logs = [];
-        console.log = function() { logs.push(Array.from(arguments).join(' ')); originalConsoleLog.apply(console, arguments); };
-        eval(code);
-        console.log = originalConsoleLog;
-        document.getElementById('output-content').textContent = logs.length ? logs.join('\n') : 'JavaScript code executed successfully (no output)';
-      } catch (err) {
-        document.getElementById('output-content').textContent = `JavaScript error: ${err.message || err}`;
-      }
-    }
+    // --- Bind Events ---
+    document.getElementById("run-btn").onclick = () => {
+      document.getElementById("run-spinner").classList.remove("hidden");
+      document.getElementById("run-text").textContent = "Running...";
+      runCode();
+    };
 
-    function runHTMLCode(code) {
-      try {
-        document.getElementById('html-output-frame').srcdoc = code;
-        // switch to HTML tab
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
-        const htmlBtn = document.querySelector('[data-tab="html-output"]'); if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
-        document.getElementById('output-content').classList.add('hidden');
-        document.getElementById('html-output-content').classList.remove('hidden');
-        document.getElementById('output-content').textContent = 'HTML rendered successfully. View output in HTML tab.';
-      } catch (err) {
-        document.getElementById('output-content').textContent = `HTML error: ${err.message || err}`;
-      }
-    }
+    document.getElementById("refresh-btn").onclick = () => location.reload();
 
-    function runCSSCode(code) {
-      try {
-        const htmlWithCSS = `<style>${code}</style><div class="css-output"><h1>CSS Output Preview</h1><p>This is a preview of your CSS styles.</p><button class="btn">Styled Button</button></div>`;
-        document.getElementById('html-output-frame').srcdoc = htmlWithCSS;
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
-        const htmlBtn = document.querySelector('[data-tab="html-output"]'); if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
-        document.getElementById('output-content').classList.add('hidden');
-        document.getElementById('html-output-content').classList.remove('hidden');
-        document.getElementById('output-content').textContent = 'CSS styles applied. View output in HTML tab.';
-      } catch (err) {
-        document.getElementById('output-content').textContent = `CSS error: ${err.message || err}`;
-      }
-    }
+    document.getElementById("language-select").onchange = e => {
+      const lang = e.target.value;
+      state.currentLanguage = lang;
+      state.files[state.currentFile].language = lang;
+      monaco.editor.setModelLanguage(monacoEditor.getModel(), lang);
+      document.getElementById("file-language").textContent = lang;
+    };
 
-    function runCppCode(code) {
-      document.getElementById('output-content').textContent = `C++ code would be compiled and executed here.\n\nIn a full implementation, this would use Emscripten to compile C++ to WebAssembly.\n\nYour code:\n\n${code}`;
-    }
-    function runJavaCode(code) {
-      document.getElementById('output-content').textContent = `Java code would be compiled and executed here.\n\nIn a full implementation, this would use CheerpJ or server-side compilation.\n\nYour code:\n\n${code}`;
-    }
-    function runPHPCode(code) {
-      document.getElementById('output-content').textContent = `PHP code would be executed server-side.\n\nYour code:\n\n${code}`;
-    }
-    function runRubyCode(code) {
-      document.getElementById('output-content').textContent = `Ruby code would be executed here (Opal/transpile required).\n\nYour code:\n\n${code}`;
-    }
-    function runGoCode(code) {
-      document.getElementById('output-content').textContent = `Go code would be compiled and executed here.\n\nYour code:\n\n${code}`;
-    }
-    function runRustCode(code) {
-      document.getElementById('output-content').textContent = `Rust code would be compiled to WebAssembly in a full implementation.\n\nYour code:\n\n${code}`;
-    }
-    function runSQLCode(code) {
-      document.getElementById('output-content').textContent = `SQL queries would be executed against a DB or SQL.js.\n\nYour query:\n\n${code}`;
-    }
-    function runSwiftCode(code) {
-      document.getElementById('output-content').textContent = `Swift code would be compiled and executed here.\n\nYour code:\n\n${code}`;
-    }
-    function runTypeScriptCode(code) {
-      try {
-        // naive type-stripping and exec
-        const originalConsoleLog = console.log;
-        const logs = [];
-        console.log = function() { logs.push(Array.from(arguments).join(' ')); originalConsoleLog.apply(console, arguments); };
-        const js = code.replace(/:\s*[^;=]+(?=[;=])/g, ''); // simple strip types
-        eval(js);
-        console.log = originalConsoleLog;
-        document.getElementById('output-content').textContent = logs.length ? logs.join('\n') : 'TypeScript executed (no output)';
-      } catch(err) {
-        document.getElementById('output-content').textContent = `TypeScript error: ${err.message || err}`;
-      }
-    }
-
-    // === Save / Download / New Project ===
-    function saveProject() {
-      // ensure current file saved
-      try { if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
-      state.projectName = document.getElementById('project-name').value || state.projectName;
-      localStorage.setItem('codeRunner_project', JSON.stringify(state));
-      const status = document.getElementById('status');
-      status.textContent = 'Project saved successfully';
-      setTimeout(()=> status.textContent = 'Idle', 1500);
-    }
-
-    function downloadProject() {
-      try {
-        if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue();
-        const data = JSON.stringify(state, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${state.projectName || 'project'}.coderunner`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        document.getElementById('status').textContent = 'Project downloaded';
-        setTimeout(()=> document.getElementById('status').textContent = 'Idle', 1400);
-      } catch (err) {
-        document.getElementById('status').textContent = 'Error downloading project';
-      }
-    }
-
-    function newProject() {
-      if (!confirm('Create a new project? This will clear the current project (saved state in localStorage will be removed).')) return;
-      localStorage.removeItem('codeRunner_project');
-      // reset state and reload page
-      state = JSON.parse(JSON.stringify(defaultState));
-      location.reload();
-    }
-
-    // === File upload wrapper (exposed earlier) ===
-    function handleFileUpload(event) {
-      // event is wired in setupUIListeners but also declared above so it's defined
-      // actual handler function above in setupUIListeners will call this function
-      // this duplicate ensures older callers still find it if bound earlier
-    }
-
-    // === Helpers used above ===
-    function getExtensionForLanguage(language) {
-      switch(language) {
-        case 'python': return 'py';
-        case 'javascript': return 'js';
-        case 'html': return 'html';
-        case 'css': return 'css';
-        case 'cpp': return 'cpp';
-        case 'java': return 'java';
-        case 'php': return 'php';
-        case 'ruby': return 'rb';
-        case 'go': return 'go';
-        case 'rust': return 'rs';
-        case 'sql': return 'sql';
-        case 'swift': return 'swift';
-        case 'typescript': return 'ts';
-        default: return 'txt';
-      }
-    }
-
-    // === Re-wire the upload handler since it was defined earlier inline ===
-    // (we define again to ensure it reads 'state' and uses monaco)
-    document.getElementById('upload-file').addEventListener('change', function(ev) {
-      const files = ev.target.files;
-      if (!files) return;
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target.result;
-          state.files[file.name] = { name: file.name, content, language: getLanguageFromExtension(file.name) };
-          updateFileTree();
-          updateDependencyFiles();
-          saveProject();
-        };
-        reader.readAsText(file);
-      });
-      // reset input
-      ev.target.value = '';
-    });
-
-    // Done — everything wired.
+    // Init
+    renderFileTree();
   </script>
 </body>
 </html>
