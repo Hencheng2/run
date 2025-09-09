@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>CodeRunner - Multi-Language Code Editor</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #1e1e1e; color: #ffffff; }
     .btn-hover:hover { background-color: rgba(0,122,204,0.8); }
@@ -110,156 +111,80 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs/loader.min.js"></script>
 
   <script>
-    // --- RapidAPI Judge0 Setup ---
-    const JUDGE0_API_URL = "https://judge0-ce.p.rapidapi.com/submissions";
-    const RAPIDAPI_KEY = "YOUR_RAPIDAPI_KEY_HERE"; // 🔑 Replace with your RapidAPI Key
+    let pyodideReadyPromise = loadPyodide();
 
-    const judge0LangMap = {
-      python: 71,
-      javascript: 63,
-      cpp: 54,
-      java: 62,
-      php: 68,
-      ruby: 72,
-      go: 60,
-      rust: 73,
-      sql: 82,
-      swift: 83,
-      typescript: 74
+    const languageMap = {
+      python: { lang: "python", file: "main.py", template: '# Write your Python code here\nprint("Hello, World!")', deps: { "requirements.txt": "# Add your Python dependencies here\n" } },
+      javascript: { lang: "javascript", file: "main.js", template: '// Write your JavaScript code here\nconsole.log("Hello, World!");' },
+      html: { lang: "html", file: "index.html", template: '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Hello</title></head><body><h1>Hello, World!</h1></body></html>' },
+      css: { lang: "css", file: "style.css", template: 'body { font-family: Arial; background: #f0f0f0; }' }
     };
 
-    // --- State ---
-    const state = {
-      files: {
-        "main.py": { content: "print('Hello, World!')", language: "python" }
-      },
+    const dependencyFileList = ["requirements.txt","package.json"];
+    const defaultState = {
+      currentLanguage: "python",
       currentFile: "main.py",
-      currentLanguage: "python"
+      projectName: "Untitled Project",
+      files: {
+        "main.py": { name: "main.py", content: languageMap.python.template, language: "python" },
+        "requirements.txt": { name: "requirements.txt", content: languageMap.python.deps["requirements.txt"], language: "text" }
+      }
     };
 
-    let monacoEditor;
+    let state = JSON.parse(JSON.stringify(defaultState));
+    let monacoEditor = null;
 
-    // --- Monaco Init ---
-    require.config({ paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs" } });
-    require(["vs/editor/editor.main"], function () {
-      monacoEditor = monaco.editor.create(document.getElementById("editor"), {
-        value: state.files[state.currentFile].content,
-        language: state.files[state.currentFile].language,
-        theme: "vs-dark",
-        automaticLayout: true,
-        minimap: { enabled: false }
-      });
-    });
+    function isDependencyFile(name){ return dependencyFileList.includes(name.toLowerCase()); }
 
-    // --- Render File Tree ---
-    function renderFileTree() {
-      const fileTree = document.getElementById("file-tree");
-      fileTree.innerHTML = "";
-      Object.keys(state.files).forEach(fileName => {
-        const div = document.createElement("div");
-        div.className = "file-item cursor-pointer" + (state.currentFile === fileName ? " active-file" : "");
-        div.textContent = fileName;
-        div.onclick = () => switchFile(fileName);
-        fileTree.appendChild(div);
+    function bundleProject() {
+      let html="", css="", js="", python="";
+      Object.keys(state.files).forEach(f=>{
+        const c = state.files[f].content||"";
+        if(f.endsWith(".html")) html+=c+"\n";
+        else if(f.endsWith(".css")) css+=c+"\n";
+        else if(f.endsWith(".js")) js+=c+"\n";
+        else if(f.endsWith(".py")) python+=c+"\n";
       });
+      return {html,css,js,python};
     }
 
-    // --- Switch File ---
-    function switchFile(fileName) {
-      if (state.currentFile && monacoEditor) {
-        state.files[state.currentFile].content = monacoEditor.getValue();
-      }
-      state.currentFile = fileName;
-      state.currentLanguage = state.files[fileName].language;
-      document.getElementById("current-file").textContent = fileName;
-      document.getElementById("file-language").textContent = state.currentLanguage;
-      monaco.editor.setModelLanguage(monacoEditor.getModel(), state.currentLanguage);
-      monacoEditor.setValue(state.files[fileName].content);
-      document.getElementById("language-select").value = state.currentLanguage;
-      renderFileTree();
-    }
-
-    // --- Run Code ---
     async function runCode() {
-      try {
-        if (state.currentFile && monacoEditor) {
-          state.files[state.currentFile].content = monacoEditor.getValue();
-        }
-
-        const outputContent = document.getElementById("output-content");
-        const htmlOutputFrame = document.getElementById("html-output-frame");
-        outputContent.textContent = "";
-        htmlOutputFrame.srcdoc = "";
-
-        const language = state.currentLanguage;
-        const code = state.files[state.currentFile].content || "";
-
-        if (language === "html") {
-          htmlOutputFrame.srcdoc = code;
-        } else if (language === "css") {
-          htmlOutputFrame.srcdoc = `<style>${code}</style>`;
-        } else if (language in judge0LangMap) {
-          await runJudge0Code(code, language);
-        } else {
-          outputContent.textContent = `Execution not supported for ${language}`;
-        }
-
-        document.getElementById("status").textContent = "Execution completed";
-      } catch (err) {
-        document.getElementById("output-content").textContent = `Error: ${err.message}`;
-        document.getElementById("status").textContent = "Error";
-      } finally {
-        document.getElementById("run-spinner").classList.add("hidden");
-        document.getElementById("run-text").textContent = "Run";
+      if(state.currentFile && monacoEditor){
+        state.files[state.currentFile].content=monacoEditor.getValue();
       }
+      const {html,css,js,python}=bundleProject();
+      const output=document.getElementById("output-content");
+      const frame=document.getElementById("html-output-frame");
+      output.textContent=""; frame.srcdoc="";
+      try{
+        let ran=false;
+        if(html||css||js){
+          let scaffold=html||"<!DOCTYPE html><html><head></head><body></body></html>";
+          let combined=scaffold.replace("</head>",`<style>${css}</style></head>`).replace("</body>",`<script>${js}<\/script></body>`);
+          frame.srcdoc=combined;
+          document.getElementById("html-output-content").classList.remove("hidden");
+          document.getElementById("output-content").classList.add("hidden");
+          ran=true;
+        }
+        if(python.trim()){
+          let pyodide=await pyodideReadyPromise;
+          if(state.files["requirements.txt"]){
+            let reqs=state.files["requirements.txt"].content.split("\n").filter(Boolean);
+            try{await pyodide.runPythonAsync(`import micropip\nawait micropip.install(${JSON.stringify(reqs)})`);}catch(e){output.textContent+="Dependency error: "+e+"\n";}
+          }
+          try{
+            let result=await pyodide.runPythonAsync(python);
+            output.textContent+=(result!==undefined?result:"Python executed (no output)")+"\n";
+            document.getElementById("html-output-content").classList.add("hidden");
+            document.getElementById("output-content").classList.remove("hidden");
+          }catch(err){output.textContent+="Python error: "+err+"\n";}
+          ran=true;
+        }
+        if(!ran){output.textContent="No runnable project files found.";}
+        document.getElementById("status").textContent="Execution completed";
+      }catch(err){output.textContent="Error: "+err;document.getElementById("status").textContent="Error";}
+      finally{document.getElementById("run-spinner").classList.add("hidden");document.getElementById("run-text").textContent="Run";}
     }
-
-    async function runJudge0Code(code, language) {
-      const outputContent = document.getElementById("output-content");
-      try {
-        const response = await fetch(`${JUDGE0_API_URL}?base64_encoded=false&wait=true`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-RapidAPI-Key": RAPIDAPI_KEY,
-            "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com"
-          },
-          body: JSON.stringify({
-            source_code: code,
-            language_id: judge0LangMap[language],
-            stdin: ""
-          })
-        });
-        const result = await response.json();
-        let output = "";
-        if (result.stdout) output += result.stdout;
-        if (result.stderr) output += `\nError:\n${result.stderr}`;
-        if (result.compile_output) output += `\nCompile Error:\n${result.compile_output}`;
-        outputContent.textContent = output || "No output";
-      } catch (err) {
-        outputContent.textContent = `Judge0 error: ${err.message}`;
-      }
-    }
-
-    // --- Bind Events ---
-    document.getElementById("run-btn").onclick = () => {
-      document.getElementById("run-spinner").classList.remove("hidden");
-      document.getElementById("run-text").textContent = "Running...";
-      runCode();
-    };
-
-    document.getElementById("refresh-btn").onclick = () => location.reload();
-
-    document.getElementById("language-select").onchange = e => {
-      const lang = e.target.value;
-      state.currentLanguage = lang;
-      state.files[state.currentFile].language = lang;
-      monaco.editor.setModelLanguage(monacoEditor.getModel(), lang);
-      document.getElementById("file-language").textContent = lang;
-    };
-
-    // Init
-    renderFileTree();
   </script>
 </body>
 </html>
