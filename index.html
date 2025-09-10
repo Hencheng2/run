@@ -5,8 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>CodeRunner - Multi-Language Code Editor</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Pyodide CDN -->
-  <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; background-color: #1e1e1e; color: #ffffff; }
     .btn-hover:hover { background-color: rgba(0,122,204,0.8); }
@@ -71,7 +70,6 @@
     <div class="bg-gray-900 w-64 overflow-y-auto p-4">
       <div class="flex justify-between items-center mb-4">
         <h2 class="font-semibold">Files</h2>
-        <!-- small note: new file moved to header for convenience -->
       </div>
       <div id="file-tree" class="mb-4">
         <!-- Files will be dynamically added here -->
@@ -102,7 +100,7 @@
       </div>
       <div id="output-content" class="whitespace-pre-wrap flex-1 overflow-auto"></div>
       <div id="html-output-content" class="hidden flex-1 overflow-auto">
-        <iframe id="html-output-frame" class="html-output"></iframe>
+        <iframe id="html-output-frame" class="html-output" sandbox="allow-scripts"></iframe>
       </div>
     </div>
   </main>
@@ -153,16 +151,6 @@
     let monacoEditor = null;
     let pyodide = null;
 
-    // Initialize Pyodide
-    async function loadPyodide() {
-      if (!pyodide) {
-        pyodide = await loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"
-        });
-      }
-      return pyodide;
-    }
-
     // Utility: determine language from file extension (fallback)
     function getLanguageFromExtension(filename) {
       const ext = filename.split('.').pop().toLowerCase();
@@ -196,7 +184,6 @@
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
-          // Merge/validate parsed with defaults
           if (!parsed.files) parsed.files = defaultState.files;
           if (!parsed.currentFile) parsed.currentFile = Object.keys(parsed.files)[0] || defaultState.currentFile;
           if (!parsed.currentLanguage) parsed.currentLanguage = getLanguageFromExtension(parsed.currentFile) || defaultState.currentLanguage;
@@ -206,13 +193,32 @@
           console.warn('Failed parsing saved project, using defaults', e);
         }
       }
-      // fallback default
       state = JSON.parse(JSON.stringify(defaultState));
+    }
+
+    // === Initialize Pyodide ===
+    async function initPyodide() {
+      try {
+        pyodide = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"
+        });
+        // Preload common packages if specified in requirements.txt
+        const requirements = state.files['requirements.txt']?.content.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+        if (requirements?.length) {
+          await pyodide.loadPackage(requirements);
+        }
+        console.log('Pyodide initialized');
+      } catch (err) {
+        console.error('Failed to initialize Pyodide:', err);
+      }
     }
 
     // === Monaco loader and app init ===
     document.addEventListener('DOMContentLoaded', function() {
-      // setup tab switching UI first
+      // Initialize Pyodide
+      initPyodide();
+
+      // Setup tab switching UI
       const tabButtons = document.querySelectorAll('.tab-btn');
       const outputContent = document.getElementById('output-content');
       const htmlOutputContent = document.getElementById('html-output-content');
@@ -238,10 +244,10 @@
       // Load saved project state or default
       loadSavedProjectOrDefault();
 
-      // configure require for Monaco
+      // Configure require for Monaco
       require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs' }});
       require(['vs/editor/editor.main'], function() {
-        // create editor
+        // Create editor
         const initialFile = state.currentFile in state.files ? state.currentFile : Object.keys(state.files)[0];
         const initialContent = (state.files && state.files[initialFile]) ? state.files[initialFile].content : '';
         const initLang = languageMap[state.currentLanguage] ? languageMap[state.currentLanguage].lang : getLanguageFromExtension(initialFile);
@@ -255,30 +261,29 @@
           minimap: { enabled: false }
         });
 
-        // ensure UI is set to the saved state values
+        // Ensure UI is set to the saved state values
         document.getElementById('project-name').value = state.projectName || 'Untitled Project';
         document.getElementById('language-select').value = state.currentLanguage || 'python';
         document.getElementById('current-file').textContent = state.currentFile;
         document.getElementById('file-language').textContent = state.files[state.currentFile] ? state.files[state.currentFile].language : getLanguageFromExtension(state.currentFile);
 
-        // render file lists
+        // Render file lists
         updateFileTree();
         updateDependencyFiles();
 
-        // wire editor change to state (auto-sync)
+        // Wire editor change to state (auto-sync)
         monacoEditor.onDidChangeModelContent(() => {
           if (!state.currentFile) return;
           state.files[state.currentFile].content = monacoEditor.getValue();
         });
 
-        // Setup buttons & listeners now that editor exists
+        // Setup buttons & listeners
         setupUIListeners();
       });
     });
 
     // === UI listeners wiring ===
     function setupUIListeners() {
-      // elements
       const languageSelect = document.getElementById('language-select');
       const projectNameInput = document.getElementById('project-name');
       const runButton = document.getElementById('run-btn');
@@ -302,11 +307,12 @@
       refreshBtn.addEventListener('click', () => {
         const outputContent = document.getElementById('output-content');
         outputContent.textContent = '';
+        document.getElementById('html-output-frame').srcdoc = '';
         document.getElementById('status').textContent = 'Console cleared';
-        setTimeout(()=> document.getElementById('status').textContent = 'Idle', 1200);
+        setTimeout(() => document.getElementById('status').textContent = 'Idle', 1200);
       });
 
-      // save on unload to avoid accidental loss
+      // Save on unload
       window.addEventListener('beforeunload', () => {
         try { if (state && state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
         localStorage.setItem('codeRunner_project', JSON.stringify(state));
@@ -366,26 +372,22 @@
 
     function switchFile(fileName) {
       if (!fileName || !(fileName in state.files)) return;
-      // save current file content into state before switching
       try { if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
       state.currentFile = fileName;
       const file = state.files[fileName];
 
-      // update editor content and language
       if (monacoEditor) {
         monacoEditor.setValue(file.content || '');
         const lang = file.language && languageMap[file.language] ? languageMap[file.language].lang : getMonacoLanguageForFile(fileName);
         try { monaco.editor.setModelLanguage(monacoEditor.getModel(), lang); } catch(e) {}
       }
 
-      // update UI labels & highlights
       document.getElementById('current-file').textContent = fileName;
       document.getElementById('file-language').textContent = file.language || getLanguageFromExtension(fileName);
       updateFileTree();
       updateDependencyFiles();
     }
 
-    // Try to return Monaco's language id based on file extension or mapping
     function getMonacoLanguageForFile(fileName) {
       const ext = fileName.split('.').pop().toLowerCase();
       switch(ext) {
@@ -418,7 +420,6 @@
       const lang = getLanguageFromExtension(fileName);
       const template = languageMap[lang] ? languageMap[lang].template : '';
       state.files[fileName] = { name: fileName, content: template, language: lang === 'text' ? 'text' : lang };
-      // If this is a dependency file, refresh dependency view else file tree
       if (isDependencyFile(fileName)) updateDependencyFiles(); else updateFileTree();
       switchFile(fileName);
     }
@@ -426,23 +427,16 @@
     function deleteFile(fileName) {
       if (!fileName || !state.files[fileName]) return;
       if (!confirm(`Are you sure you want to delete ${fileName}?`)) return;
-
-      // prevent deleting everything: ensure at least one code file remains
       delete state.files[fileName];
-
-      // if deleted file was current file pick another
       const remaining = Object.keys(state.files);
       if (remaining.length === 0) {
-        // restore defaults
         state = JSON.parse(JSON.stringify(defaultState));
       }
       state.currentFile = remaining[0] || Object.keys(state.files)[0];
-      // apply switch
       switchFile(state.currentFile);
-      // re-render lists
       updateFileTree();
       updateDependencyFiles();
-      saveProject(); // persist the change
+      saveProject();
     }
 
     // === File upload ===
@@ -456,41 +450,31 @@
           const name = file.name;
           const lang = getLanguageFromExtension(name);
           state.files[name] = { name, content, language: lang === 'text' ? 'text' : lang };
-          // update trees
           updateFileTree();
           updateDependencyFiles();
         };
         reader.readAsText(file);
       });
-      // reset input so same file can be uploaded later
       event.target.value = '';
       saveProject();
     }
 
-    // === Language change (from dropdown) ===
+    // === Language change ===
     function handleLanguageChange(e) {
       const newLang = e.target.value;
       state.currentLanguage = newLang;
-
-      // decide default main file for this language
       const langDef = languageMap[newLang];
       const mainFile = langDef ? langDef.file : `main.${getExtensionForLanguage(newLang)}`;
-      // create main file if missing
       if (!state.files[mainFile]) {
         const mainContent = (langDef && langDef.template) ? langDef.template : '';
         state.files[mainFile] = { name: mainFile, content: mainContent, language: newLang };
       }
-
-      // create dependency files if provided
       if (langDef && langDef.deps) {
         Object.entries(langDef.deps).forEach(([depName, depContent]) => {
           if (!state.files[depName]) state.files[depName] = { name: depName, content: depContent, language: 'text' };
         });
       }
-
-      // switch to main file for that language
       switchFile(mainFile);
-      // update UI language select (already changed by user)
       document.getElementById('language-select').value = newLang;
       saveProject();
     }
@@ -500,53 +484,49 @@
       saveProject();
     }
 
-    // === Run / execution simulation ===
+    // === Run / execution ===
     async function runCode() {
       try {
-        // ensure content is up to date
         if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue();
-
         const outputContent = document.getElementById('output-content');
         const htmlOutputFrame = document.getElementById('html-output-frame');
         outputContent.textContent = '';
         htmlOutputFrame.srcdoc = '';
 
-        // Bundle all files for execution
-        const htmlFiles = Object.values(state.files).filter(file => 
-          file.language === 'html' || file.name.endsWith('.html')
-        );
-        
-        const cssFiles = Object.values(state.files).filter(file => 
-          file.language === 'css' || file.name.endsWith('.css')
-        );
-        
-        const jsFiles = Object.values(state.files).filter(file => 
-          file.language === 'javascript' || file.name.endsWith('.js')
-        );
-        
-        const pythonFiles = Object.values(state.files).filter(file => 
-          file.language === 'python' || file.name.endsWith('.py')
-        );
+        // Collect all HTML, CSS, JS, and Python files
+        const htmlFiles = Object.keys(state.files).filter(f => f.endsWith('.html'));
+        const cssFiles = Object.keys(state.files).filter(f => f.endsWith('.css'));
+        const jsFiles = Object.keys(state.files).filter(f => f.endsWith('.js'));
+        const pyFiles = Object.keys(state.files).filter(f => f.endsWith('.py'));
 
-        // Generate HTML output if HTML/CSS/JS files exist
-        if (htmlFiles.length > 0 || cssFiles.length > 0 || jsFiles.length > 0) {
-          generateHtmlOutput(htmlFiles, cssFiles, jsFiles);
+        // Run HTML/CSS/JS in iframe
+        if (htmlFiles.length || cssFiles.length || jsFiles.length) {
+          let htmlContent = htmlFiles.length ? state.files[htmlFiles[0]].content : '<html><head></head><body></body></html>';
+          if (cssFiles.length) {
+            const cssContent = cssFiles.map(f => state.files[f].content).join('\n');
+            htmlContent = htmlContent.replace('</head>', `<style>${cssContent}</style></head>`);
+          }
+          if (jsFiles.length) {
+            const jsContent = jsFiles.map(f => state.files[f].content).join('\n');
+            htmlContent = htmlContent.replace('</body>', `<script>${jsContent}</script></body>`);
+          }
+          htmlOutputFrame.srcdoc = htmlContent;
+          document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
+          const htmlBtn = document.querySelector('[data-tab="html-output"]');
+          if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
+          document.getElementById('output-content').classList.add('hidden');
+          document.getElementById('html-output-content').classList.remove('hidden');
+          outputContent.textContent = 'HTML/CSS/JS rendered successfully. View output in HTML tab.';
         }
 
-        // Execute Python code if Python files exist
-        if (pythonFiles.length > 0) {
-          await runPythonCodeWithPyodide(pythonFiles);
-        }
-
-        // If no HTML/CSS/JS or Python files, run based on current file
-        if (htmlFiles.length === 0 && cssFiles.length === 0 && 
-            jsFiles.length === 0 && pythonFiles.length === 0) {
+        // Run Python files
+        if (pyFiles.length) {
+          const pyCode = pyFiles.map(f => state.files[f].content).join('\n');
+          await runPythonCode(pyCode);
+        } else if (!htmlFiles.length && !cssFiles.length && !jsFiles.length) {
           const language = state.currentLanguage || state.files[state.currentFile].language || getLanguageFromExtension(state.currentFile);
           const code = state.files[state.currentFile].content || '';
-
           switch(language) {
-            case 'javascript': runJavaScriptCode(code); break;
-            case 'typescript': runTypeScriptCode(code); break;
             case 'cpp': runCppCode(code); break;
             case 'java': runJavaCode(code); break;
             case 'php': runPHPCode(code); break;
@@ -555,11 +535,11 @@
             case 'rust': runRustCode(code); break;
             case 'sql': runSQLCode(code); break;
             case 'swift': runSwiftCode(code); break;
+            case 'typescript': runTypeScriptCode(code); break;
             default:
-              outputContent.textContent = `No executable files found in project.`;
+              outputContent.textContent = `Unsupported language: ${language}`;
           }
         }
-
         document.getElementById('status').textContent = 'Execution completed';
       } catch (err) {
         document.getElementById('output-content').textContent = `Error: ${err.message || err}`;
@@ -567,120 +547,36 @@
       } finally {
         document.getElementById('run-spinner').classList.add('hidden');
         document.getElementById('run-text').textContent = 'Run';
-        // switch to console tab
-        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
-        const outbtn = document.querySelector('[data-tab="output"]');
-        if (outbtn) outbtn.classList.add('border-b-2','border-blue-500','text-blue-300');
-        document.getElementById('output-content').classList.remove('hidden');
-        document.getElementById('html-output-content').classList.add('hidden');
       }
     }
 
-    // Generate HTML output from all HTML/CSS/JS files
-    function generateHtmlOutput(htmlFiles, cssFiles, jsFiles) {
-      try {
-        let htmlContent = '';
-        
-        // Start with HTML files
-        if (htmlFiles.length > 0) {
-          htmlContent = htmlFiles.map(file => file.content).join('\n');
-        } else {
-          // If no HTML files, create a basic structure
-          htmlContent = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Generated Output</title></head><body><h1>Generated Output</h1></body></html>';
-        }
-        
-        // Inject CSS into the head
-        if (cssFiles.length > 0) {
-          const cssContent = cssFiles.map(file => file.content).join('\n');
-          const styleTag = `<style>${cssContent}</style>`;
-          htmlContent = htmlContent.replace('</head>', `${styleTag}</head>`);
-          if (!htmlContent.includes('</head>')) {
-            htmlContent = htmlContent.replace('<head>', `<head>${styleTag}`);
-          }
-        }
-        
-        // Inject JS before the closing body tag
-        if (jsFiles.length > 0) {
-          const jsContent = jsFiles.map(file => file.content).join('\n');
-          const scriptTag = `<script>${jsContent}</script>`;
-          htmlContent = htmlContent.replace('</body>', `${scriptTag}</body>`);
-          if (!htmlContent.includes('</body>')) {
-            htmlContent += scriptTag;
-          }
-        }
-        
-        document.getElementById('html-output-frame').srcdoc = htmlContent;
-        
-        // Switch to HTML tab if there's HTML content
-        if (htmlFiles.length > 0) {
-          document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
-          const htmlBtn = document.querySelector('[data-tab="html-output"]'); 
-          if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
-          document.getElementById('output-content').classList.add('hidden');
-          document.getElementById('html-output-content').classList.remove('hidden');
-        }
-        
-        document.getElementById('output-content').textContent += 'HTML/CSS/JS files processed. View output in HTML tab.\n';
-      } catch (err) {
-        document.getElementById('output-content').textContent += `HTML/CSS/JS processing error: ${err.message || err}\n`;
+    async function runPythonCode(code) {
+      if (!pyodide) {
+        document.getElementById('output-content').textContent = 'Pyodide is not initialized yet.';
+        return;
       }
-    }
-
-    // Run Python code using Pyodide
-    async function runPythonCodeWithPyodide(pythonFiles) {
       try {
-        await loadPyodide();
-        
-        // Install dependencies if requirements.txt exists
-        if (state.files['requirements.txt']) {
-          const requirements = state.files['requirements.txt'].content
-            .split('\n')
-            .filter(line => line.trim() && !line.trim().startsWith('#'))
-            .map(line => line.trim());
-          
-          if (requirements.length > 0) {
-            document.getElementById('output-content').textContent += 'Installing Python dependencies...\n';
-            for (const pkg of requirements) {
-              try {
-                await pyodide.loadPackage(pkg);
-                document.getElementById('output-content').textContent += `Installed: ${pkg}\n`;
-              } catch (err) {
-                document.getElementById('output-content').textContent += `Failed to install: ${pkg}\n`;
-              }
-            }
-          }
-        }
-        
-        // Execute all Python files
-        let output = '';
-        pyodide.runPython(`
-          import sys
-          from io import StringIO
-          sys.stdout = StringIO()
+        // Capture output
+        pyodide.globals.set("output", []);
+        await pyodide.runPythonAsync(`
+import sys
+from js import output
+class CaptureOutput:
+    def write(self, text):
+        output.append(text)
+    def flush(self):
+        pass
+sys.stdout = CaptureOutput()
+sys.stderr = CaptureOutput()
+${code}
         `);
-        
-        for (const file of pythonFiles) {
-          try {
-            pyodide.runPython(file.content);
-          } catch (err) {
-            document.getElementById('output-content').textContent += `Error in ${file.name}: ${err.message}\n`;
-          }
-        }
-        
-        // Capture the output
-        output = pyodide.runPython('sys.stdout.getvalue()');
-        
-        if (output) {
-          document.getElementById('output-content').textContent += output;
-        } else {
-          document.getElementById('output-content').textContent += 'Python code executed successfully (no output)\n';
-        }
+        const output = pyodide.globals.get("output").toJs().join('');
+        document.getElementById('output-content').textContent = output || 'Python code executed successfully (no output)';
       } catch (err) {
-        document.getElementById('output-content').textContent += `Python execution error: ${err.message || err}\n`;
+        document.getElementById('output-content').textContent = `Python error: ${err.message || err}`;
       }
     }
 
-    // Other language runners (unchanged)
     function runJavaScriptCode(code) {
       try {
         const originalConsoleLog = console.log;
@@ -694,13 +590,73 @@
       }
     }
 
+    function runHTMLCode(code) {
+      try {
+        document.getElementById('html-output-frame').srcdoc = code;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
+        const htmlBtn = document.querySelector('[data-tab="html-output"]');
+        if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
+        document.getElementById('output-content').classList.add('hidden');
+        document.getElementById('html-output-content').classList.remove('hidden');
+        document.getElementById('output-content').textContent = 'HTML rendered successfully. View output in HTML tab.';
+      } catch (err) {
+        document.getElementById('output-content').textContent = `HTML error: ${err.message || err}`;
+      }
+    }
+
+    function runCSSCode(code) {
+      try {
+        const htmlWithCSS = `<style>${code}</style><div class="css-output"><h1>CSS Output Preview</h1><p>This is a preview of your CSS styles.</p><button class="btn">Styled Button</button></div>`;
+        document.getElementById('html-output-frame').srcdoc = htmlWithCSS;
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('border-b-2','border-blue-500','text-blue-300'));
+        const htmlBtn = document.querySelector('[data-tab="html-output"]');
+        if (htmlBtn) htmlBtn.classList.add('border-b-2','border-blue-500','text-blue-300');
+        document.getElementById('output-content').classList.add('hidden');
+        document.getElementById('html-output-content').classList.remove('hidden');
+        document.getElementById('output-content').textContent = 'CSS styles applied. View output in HTML tab.';
+      } catch (err) {
+        document.getElementById('output-content').textContent = `CSS error: ${err.message || err}`;
+      }
+    }
+
+    function runCppCode(code) {
+      document.getElementById('output-content').textContent = `C++ code would be compiled and executed here.\n\nIn a full implementation, this would use Emscripten to compile C++ to WebAssembly.\n\nYour code:\n\n${code}`;
+    }
+
+    function runJavaCode(code) {
+      document.getElementById('output-content').textContent = `Java code would be compiled and executed here.\n\nIn a full implementation, this would use CheerpJ or server-side compilation.\n\nYour code:\n\n${code}`;
+    }
+
+    function runPHPCode(code) {
+      document.getElementById('output-content').textContent = `PHP code would be executed server-side.\n\nYour code:\n\n${code}`;
+    }
+
+    function runRubyCode(code) {
+      document.getElementById('output-content').textContent = `Ruby code would be executed here (Opal/transpile required).\n\nYour code:\n\n${code}`;
+    }
+
+    function runGoCode(code) {
+      document.getElementById('output-content').textContent = `Go code would be compiled and executed here.\n\nYour code:\n\n${code}`;
+    }
+
+    function runRustCode(code) {
+      document.getElementById('output-content').textContent = `Rust code would be compiled to WebAssembly in a full implementation.\n\nYour code:\n\n${code}`;
+    }
+
+    function runSQLCode(code) {
+      document.getElementById('output-content').textContent = `SQL queries would be executed against a DB or SQL.js.\n\nYour query:\n\n${code}`;
+    }
+
+    function runSwiftCode(code) {
+      document.getElementById('output-content').textContent = `Swift code would be compiled and executed here.\n\nYour code:\n\n${code}`;
+    }
+
     function runTypeScriptCode(code) {
       try {
-        // naive type-stripping and exec
         const originalConsoleLog = console.log;
         const logs = [];
         console.log = function() { logs.push(Array.from(arguments).join(' ')); originalConsoleLog.apply(console, arguments); };
-        const js = code.replace(/:\s*[^;=]+(?=[;=])/g, ''); // simple strip types
+        const js = code.replace(/:\s*[^;=]+(?=[;=])/g, '');
         eval(js);
         console.log = originalConsoleLog;
         document.getElementById('output-content').textContent = logs.length ? logs.join('\n') : 'TypeScript executed (no output)';
@@ -709,40 +665,18 @@
       }
     }
 
-    function runCppCode(code) {
-      document.getElementById('output-content').textContent = `C++ code would be compiled and executed here.\n\nIn a full implementation, this would use Emscripten to compile C++ to WebAssembly.\n\nYour code:\n\n${code}`;
-    }
-    function runJavaCode(code) {
-      document.getElementById('output-content').textContent = `Java code would be compiled and executed here.\n\nIn a full implementation, this would use CheerpJ or server-side compilation.\n\nYour code:\n\n${code}`;
-    }
-    function runPHPCode(code) {
-      document.getElementById('output-content').textContent = `PHP code would be executed server-side.\n\nYour code:\n\n${code}`;
-    }
-    function runRubyCode(code) {
-      document.getElementById('output-content').textContent = `Ruby code would be executed here (Opal/transpile required).\n\nYour code:\n\n${code}`;
-    }
-    function runGoCode(code) {
-      document.getElementById('output-content').textContent = `Go code would be compiled and executed here.\n\nYour code:\n\n${code}`;
-    }
-    function runRustCode(code) {
-      document.getElementById('output-content').textContent = `Rust code would be compiled to WebAssembly in a full implementation.\n\nYour code:\n\n${code}`;
-    }
-    function runSQLCode(code) {
-      document.getElementById('output-content').textContent = `SQL queries would be executed against a DB or SQL.js.\n\nYour query:\n\n${code}`;
-    }
-    function runSwiftCode(code) {
-      document.getElementById('output-content').textContent = `Swift code would be compiled and executed here.\n\nYour code:\n\n${code}`;
-    }
-
     // === Save / Download / New Project ===
     function saveProject() {
-      // ensure current file saved
-      try { if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue(); } catch(e){}
-      state.projectName = document.getElementById('project-name').value || state.projectName;
-      localStorage.setItem('codeRunner_project', JSON.stringify(state));
-      const status = document.getElementById('status');
-      status.textContent = 'Project saved successfully';
-      setTimeout(()=> status.textContent = 'Idle', 1500);
+      try {
+        if (state.currentFile && monacoEditor) state.files[state.currentFile].content = monacoEditor.getValue();
+        state.projectName = document.getElementById('project-name').value || state.projectName;
+        localStorage.setItem('codeRunner_project', JSON.stringify(state));
+        const status = document.getElementById('status');
+        status.textContent = 'Project saved successfully';
+        setTimeout(() => status.textContent = 'Idle', 1500);
+      } catch (err) {
+        document.getElementById('status').textContent = 'Error saving project';
+      }
     }
 
     function downloadProject() {
@@ -759,7 +693,7 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         document.getElementById('status').textContent = 'Project downloaded';
-        setTimeout(()=> document.getElementById('status').textContent = 'Idle', 1400);
+        setTimeout(() => document.getElementById('status').textContent = 'Idle', 1400);
       } catch (err) {
         document.getElementById('status').textContent = 'Error downloading project';
       }
@@ -768,12 +702,10 @@
     function newProject() {
       if (!confirm('Create a new project? This will clear the current project (saved state in localStorage will be removed).')) return;
       localStorage.removeItem('codeRunner_project');
-      // reset state and reload page
       state = JSON.parse(JSON.stringify(defaultState));
       location.reload();
     }
 
-    // === Helpers used above ===
     function getExtensionForLanguage(language) {
       switch(language) {
         case 'python': return 'py';
@@ -793,7 +725,6 @@
       }
     }
 
-    // === Re-wire the upload handler since it was defined earlier inline ===
     document.getElementById('upload-file').addEventListener('change', function(ev) {
       const files = ev.target.files;
       if (!files) return;
@@ -808,7 +739,6 @@
         };
         reader.readAsText(file);
       });
-      // reset input
       ev.target.value = '';
     });
   </script>
